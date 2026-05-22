@@ -1,5 +1,6 @@
 import http from "node:http";
 import { getConfig } from "./config/env.mjs";
+import { readDataExchangeContract } from "./routes/contracts.mjs";
 import { buildHealthResponse, writeJson } from "./routes/health.mjs";
 
 const config = getConfig();
@@ -9,6 +10,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
     writeJson(response, 200, buildHealthResponse(config));
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/contracts/v1") {
+    writeJson(response, 200, readDataExchangeContract());
     return;
   }
 

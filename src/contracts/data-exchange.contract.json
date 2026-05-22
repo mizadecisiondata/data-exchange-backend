@@ -1,0 +1,137 @@
+{
+  "version": "0.1.0-phase-1-contract",
+  "status": "draft_guardrails_only",
+  "service": "data-exchange-backend",
+  "phase": "1-contracts",
+  "portals": {
+    "client": "separate_client_portal",
+    "admin": "separate_admin_portal",
+    "agentWorkbench": "admin_only"
+  },
+  "commercialModes": [
+    "Cliente Normal",
+    "Data Partner Contributor",
+    "Data Partner Active",
+    "Data Partner Founding"
+  ],
+  "decisionCredits": {
+    "Cliente Normal": {
+      "earnsCredits": false,
+      "excessTariff": "cliente_normal"
+    },
+    "Data Partner Contributor": {
+      "basicQueryRatio": "1:2",
+      "excessTariff": "cliente_normal"
+    },
+    "Data Partner Active": {
+      "preferentialRatio": "1:1",
+      "excessTariff": "cliente_normal"
+    },
+    "Data Partner Founding": {
+      "preferentialRatio": "1:1",
+      "excessTariff": "cliente_normal"
+    }
+  },
+  "billing": {
+    "primaryModel": "monthly_postpaid",
+    "prepaidPrimaryAllowed": false
+  },
+  "ingestion": {
+    "unit": "information_blocks",
+    "qualityThreshold": 0.95,
+    "duplicatePolicy": "discard_without_error_or_credits",
+    "allowedReporterSectors": [
+      "casas_comerciales",
+      "telcos",
+      "retail",
+      "concesionarios",
+      "fintechs",
+      "cobranza_bpo",
+      "industria",
+      "mayoristas"
+    ],
+    "excludedReporterTypes": [
+      "banks",
+      "mandatory_sb_reporters"
+    ]
+  },
+  "queries": {
+    "identifiers": [
+      "cedula",
+      "ruc",
+      "codigo_sb"
+    ],
+    "products": [
+      "basic_report",
+      "complete_report"
+    ],
+    "channels": [
+      "individual",
+      "batch",
+      "api"
+    ],
+    "auditRequired": [
+      "bac",
+      "consent",
+      "user",
+      "channel",
+      "ip",
+      "product",
+      "tariff",
+      "estimatedValue",
+      "status"
+    ]
+  },
+  "phase1Endpoints": [
+    {
+      "method": "GET",
+      "path": "/contracts/v1",
+      "status": "implemented_contract_only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": "reserved_phase_2"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/client-registration",
+      "status": "reserved_phase_2"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/access-requests/{id}/approve",
+      "status": "reserved_phase_2"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ingestion/information-blocks",
+      "status": "reserved_phase_3"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/queries",
+      "status": "reserved_phase_4"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/batch-queries",
+      "status": "reserved_phase_5"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/usage",
+      "status": "reserved_phase_6"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agent-workbench/events",
+      "status": "reserved_admin_only"
+    }
+  ],
+  "questionsForMateo": [
+    "Texto legal exacto de consentimiento para consulta.",
+    "Diccionario definitivo de columnas de bloque de informacion.",
+    "Documento comercial oficial para tarifas y valores por producto."
+  ]
+}

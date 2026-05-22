@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 const requiredFiles = [
   "src/server.mjs",
   "src/config/env.mjs",
+  "src/contracts/data-exchange.contract.json",
+  "src/routes/contracts.mjs",
   "src/routes/health.mjs",
   ".env.example",
   "README.md"

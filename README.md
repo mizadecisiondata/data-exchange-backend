@@ -39,6 +39,7 @@ npm run test
 ```text
 GET http://localhost:4100/health
 GET http://localhost:4100/healthz
+GET http://localhost:4100/contracts/v1
 ```
 
 ## Modulos iniciales
@@ -52,3 +53,7 @@ GET http://localhost:4100/healthz
 - `agent-workbench`: telemetria de agentes para portal admin.
 
 No se implementan flujos de negocio reales en Fase 0.
+
+## Contrato de Fase 1
+
+`GET /contracts/v1` expone un contrato tecnico de guardrails y rutas reservadas para alinear frontend, backend y aprobacion de Mateo. Este contrato no ejecuta pricing, decision credits, consultas ni ingesta real; solo fija las reglas que no deben cambiar sin aprobacion.
