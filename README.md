@@ -42,6 +42,7 @@ GET http://localhost:4100/healthz
 GET http://localhost:4100/contracts/v1
 GET http://localhost:4100/contracts/v1/consent
 GET http://localhost:4100/contracts/v1/data-partner-dictionary
+GET http://localhost:4100/contracts/v1/onboarding
 GET http://localhost:4100/contracts/v1/pricing
 ```
 
@@ -65,4 +66,5 @@ Los subcontratos versionados son:
 
 - `consent.contract.json`: consentimiento Decision Data basado en evidencia auditada Red Clic.
 - `data-partner-dictionary.contract.json`: campos de carga desde la pestana `Diccionario Reporte`.
+- `onboarding.contract.json`: flujo de autorregistro, contratos descargables, documentos habilitantes y revision admin.
 - `pricing.contract.json`: matriz comercial base desde la propuesta `DD-COM-2026-017`.

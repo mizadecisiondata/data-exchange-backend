@@ -1,0 +1,74 @@
+{
+  "version": "dd-onboarding-v1",
+  "status": "source_backed_visual_workflow",
+  "sampleClient": "MEGADATOS S.A.",
+  "sources": {
+    "signedMasterAgreement": {
+      "localFile": "C:/Users/Det-Pc/Downloads/MDOEX20260013_Rev_DD_signed (3).pdf",
+      "pages": 38,
+      "textExtracted": true,
+      "usage": "Referencia estructural para contrato marco generico Decision Data."
+    },
+    "signedNda": {
+      "localFile": "C:/Users/Det-Pc/Downloads/ACUERDO_DE_CONFIDENCIALIDAD_signed.pdf",
+      "pages": 8,
+      "textExtracted": false,
+      "usage": "Evidencia de documento requerido; PDF escaneado/no textual, no se copia contenido."
+    },
+    "companyUserManual": {
+      "driveFileId": "1aPbtEHtRthK39dQwIQISG7Aa7xPCJaeD",
+      "title": "RC-REP-MAN-009 Manual de Uso del Reporte Crediticio.docx",
+      "sectionUsed": "Portal Cliente - Buro Empresa",
+      "usage": "Guia UX para login, producto contratado, consulta por identificacion, confirmacion, descarga e historial."
+    }
+  },
+  "clientSelfRegistration": {
+    "steps": [
+      "Crear usuario y datos de empresa",
+      "Seleccionar modalidad tentativa",
+      "Descargar documentos genericos",
+      "Firmar documentos fuera de plataforma o con proveedor de firma futuro",
+      "Cargar documentos firmados y habilitantes",
+      "Quedar pendiente de aprobacion administrativa"
+    ],
+    "downloadableTemplates": [
+      "nda_template",
+      "master_agreement_template",
+      "technical_annex_template"
+    ],
+    "modeHandling": "El contrato marco debe ser generico y la modalidad se parametriza por anexo o caratula comercial."
+  },
+  "requiredDocumentChecklist": [
+    { "code": "nda_signed", "label": "Acuerdo de confidencialidad firmado", "required": true },
+    { "code": "master_agreement_signed", "label": "Contrato marco Decision Data firmado", "required": true },
+    { "code": "technical_annex_signed", "label": "Anexo tecnico / modalidad firmado", "required": true },
+    { "code": "ruc", "label": "RUC actualizado", "required": true },
+    { "code": "legal_representative_appointment", "label": "Nombramiento del representante legal", "required": true },
+    { "code": "legal_representative_id", "label": "Cedula o documento del representante legal", "required": true },
+    { "code": "data_source_declaration", "label": "Declaracion de fuente y legitimacion de datos", "required": true },
+    { "code": "technical_contact", "label": "Contacto tecnico y operativo", "required": true },
+    { "code": "billing_contact", "label": "Contacto de facturacion postpago", "required": true }
+  ],
+  "adminReview": {
+    "module": "client_onboarding",
+    "mergedLegacyAreas": [
+      "solicitudes",
+      "aprobacion_de_accesos",
+      "clientes"
+    ],
+    "states": [
+      "draft",
+      "documents_pending",
+      "under_review",
+      "observed",
+      "approved",
+      "credentials_sent"
+    ],
+    "approvalOutputs": [
+      "modalidad_confirmada",
+      "usuario_aprobado",
+      "correo_clave_temporal_pendiente_fase_2",
+      "bac_evento_aprobacion"
+    ]
+  }
+}

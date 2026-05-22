@@ -16,6 +16,7 @@ export function readDataExchangeContract() {
     sourceContracts: {
       consent: readContractFile("consent.contract.json"),
       dataPartnerDictionary: readContractFile("data-partner-dictionary.contract.json"),
+      onboarding: readContractFile("onboarding.contract.json"),
       pricing: readContractFile("pricing.contract.json")
     }
   };
@@ -31,4 +32,8 @@ export function readDataPartnerDictionaryContract() {
 
 export function readPricingContract() {
   return readContractFile("pricing.contract.json");
+}
+
+export function readOnboardingContract() {
+  return readContractFile("onboarding.contract.json");
 }

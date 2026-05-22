@@ -4,6 +4,7 @@ import {
   readConsentContract,
   readDataExchangeContract,
   readDataPartnerDictionaryContract,
+  readOnboardingContract,
   readPricingContract
 } from "./routes/contracts.mjs";
 import { buildHealthResponse, writeJson } from "./routes/health.mjs";
@@ -30,6 +31,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/contracts/v1/data-partner-dictionary") {
     writeJson(response, 200, readDataPartnerDictionaryContract());
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/contracts/v1/onboarding") {
+    writeJson(response, 200, readOnboardingContract());
     return;
   }
 

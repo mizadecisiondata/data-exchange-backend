@@ -103,6 +103,11 @@
     },
     {
       "method": "GET",
+      "path": "/contracts/v1/onboarding",
+      "status": "implemented_contract_only"
+    },
+    {
+      "method": "GET",
       "path": "/contracts/v1/pricing",
       "status": "implemented_contract_only"
     },
@@ -150,7 +155,8 @@
   "resolvedInputsFromMateo": [
     "Consentimiento: usar evidencia auditada Red Clic como base Decision Data, no invasiva y estrategica.",
     "Diccionario: usar pestana Diccionario Reporte del Google Sheet de carga Data Partner.",
-    "Pricing: usar propuesta comercial DD-COM-2026-017 como base de precios y modalidades."
+    "Pricing: usar propuesta comercial DD-COM-2026-017 como base de precios y modalidades.",
+    "Onboarding: usar contrato y NDA firmados con Megadatos como referencia de proceso, sin publicar firmados como plantillas."
   ],
   "openAssumptions": [
     "La propuesta comercial usa 'consultas brutas'; se mapea a 'consultas basicas' para respetar la regla operativa definida por Mateo."

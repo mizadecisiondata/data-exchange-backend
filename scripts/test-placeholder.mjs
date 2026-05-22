@@ -3,6 +3,7 @@ import {
   readConsentContract,
   readDataExchangeContract,
   readDataPartnerDictionaryContract,
+  readOnboardingContract,
   readPricingContract
 } from "../src/routes/contracts.mjs";
 import { buildHealthResponse } from "../src/routes/health.mjs";
@@ -11,6 +12,7 @@ const health = buildHealthResponse(getConfig(), new Date("2026-05-22T00:00:00.00
 const contract = readDataExchangeContract();
 const consent = readConsentContract();
 const dictionary = readDataPartnerDictionaryContract();
+const onboarding = readOnboardingContract();
 const pricing = readPricingContract();
 
 if (!Object.hasOwn(health.rules, "queryIdentifierPolicy")) {
@@ -43,6 +45,10 @@ if (dictionary.validationSummary.totalFields !== 57 || dictionary.quality.minimu
 
 if (pricing.queryTariffMatrix.length !== 6 || pricing.billing.model !== "monthly_postpaid") {
   throw new Error("Pricing contract must preserve the commercial proposal matrix and postpaid model.");
+}
+
+if (!onboarding.adminReview.mergedLegacyAreas.includes("solicitudes") || onboarding.requiredDocumentChecklist.length < 8) {
+  throw new Error("Onboarding contract must merge admin review and require habilitating documents.");
 }
 
 console.log("Backend bootstrap tests ok.");

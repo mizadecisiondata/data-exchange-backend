@@ -6,6 +6,7 @@ const requiredFiles = [
   "src/contracts/consent.contract.json",
   "src/contracts/data-exchange.contract.json",
   "src/contracts/data-partner-dictionary.contract.json",
+  "src/contracts/onboarding.contract.json",
   "src/contracts/pricing.contract.json",
   "src/routes/contracts.mjs",
   "src/routes/health.mjs",
