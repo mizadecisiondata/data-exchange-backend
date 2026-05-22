@@ -40,6 +40,9 @@ npm run test
 GET http://localhost:4100/health
 GET http://localhost:4100/healthz
 GET http://localhost:4100/contracts/v1
+GET http://localhost:4100/contracts/v1/consent
+GET http://localhost:4100/contracts/v1/data-partner-dictionary
+GET http://localhost:4100/contracts/v1/pricing
 ```
 
 ## Modulos iniciales
@@ -57,3 +60,9 @@ No se implementan flujos de negocio reales en Fase 0.
 ## Contrato de Fase 1
 
 `GET /contracts/v1` expone un contrato tecnico de guardrails y rutas reservadas para alinear frontend, backend y aprobacion de Mateo. Este contrato no ejecuta pricing, decision credits, consultas ni ingesta real; solo fija las reglas que no deben cambiar sin aprobacion.
+
+Los subcontratos versionados son:
+
+- `consent.contract.json`: consentimiento Decision Data basado en evidencia auditada Red Clic.
+- `data-partner-dictionary.contract.json`: campos de carga desde la pestana `Diccionario Reporte`.
+- `pricing.contract.json`: matriz comercial base desde la propuesta `DD-COM-2026-017`.

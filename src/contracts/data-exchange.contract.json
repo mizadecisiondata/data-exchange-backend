@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0-phase-1-contract",
-  "status": "draft_guardrails_only",
+  "version": "0.2.0-phase-1-contract",
+  "status": "source_backed_guardrails_only",
   "service": "data-exchange-backend",
   "phase": "1-contracts",
   "portals": {
@@ -34,11 +34,13 @@
   },
   "billing": {
     "primaryModel": "monthly_postpaid",
-    "prepaidPrimaryAllowed": false
+    "prepaidPrimaryAllowed": false,
+    "pricingSource": "pricing.contract.json"
   },
   "ingestion": {
     "unit": "information_blocks",
     "qualityThreshold": 0.95,
+    "dictionarySource": "data-partner-dictionary.contract.json",
     "duplicatePolicy": "discard_without_error_or_credits",
     "allowedReporterSectors": [
       "casas_comerciales",
@@ -56,6 +58,7 @@
     ]
   },
   "queries": {
+    "consentSource": "consent.contract.json",
     "identifiers": [
       "cedula",
       "ruc",
@@ -86,6 +89,21 @@
     {
       "method": "GET",
       "path": "/contracts/v1",
+      "status": "implemented_contract_only"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/v1/consent",
+      "status": "implemented_contract_only"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/v1/data-partner-dictionary",
+      "status": "implemented_contract_only"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/v1/pricing",
       "status": "implemented_contract_only"
     },
     {
@@ -129,9 +147,12 @@
       "status": "reserved_admin_only"
     }
   ],
-  "questionsForMateo": [
-    "Texto legal exacto de consentimiento para consulta.",
-    "Diccionario definitivo de columnas de bloque de informacion.",
-    "Documento comercial oficial para tarifas y valores por producto."
+  "resolvedInputsFromMateo": [
+    "Consentimiento: usar evidencia auditada Red Clic como base Decision Data, no invasiva y estrategica.",
+    "Diccionario: usar pestana Diccionario Reporte del Google Sheet de carga Data Partner.",
+    "Pricing: usar propuesta comercial DD-COM-2026-017 como base de precios y modalidades."
+  ],
+  "openAssumptions": [
+    "La propuesta comercial usa 'consultas brutas'; se mapea a 'consultas basicas' para respetar la regla operativa definida por Mateo."
   ]
 }

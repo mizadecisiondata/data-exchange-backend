@@ -1,6 +1,11 @@
 import http from "node:http";
 import { getConfig } from "./config/env.mjs";
-import { readDataExchangeContract } from "./routes/contracts.mjs";
+import {
+  readConsentContract,
+  readDataExchangeContract,
+  readDataPartnerDictionaryContract,
+  readPricingContract
+} from "./routes/contracts.mjs";
 import { buildHealthResponse, writeJson } from "./routes/health.mjs";
 
 const config = getConfig();
@@ -15,6 +20,21 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/contracts/v1") {
     writeJson(response, 200, readDataExchangeContract());
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/contracts/v1/consent") {
+    writeJson(response, 200, readConsentContract());
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/contracts/v1/data-partner-dictionary") {
+    writeJson(response, 200, readDataPartnerDictionaryContract());
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/contracts/v1/pricing") {
+    writeJson(response, 200, readPricingContract());
     return;
   }
 

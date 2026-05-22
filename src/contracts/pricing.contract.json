@@ -1,0 +1,142 @@
+{
+  "version": "dd-pricing-v1",
+  "status": "base_from_commercial_proposal",
+  "source": {
+    "type": "commercial_proposal_pdf",
+    "title": "Propuesta comercial para el ecosistema de referencias crediticias Decision Data",
+    "driveFileId": "1CrGJUOeAneymZjV-_dlVWzLDB8u9GEXP",
+    "docCode": "DD-COM-2026-017",
+    "date": "2026-05",
+    "note": "La propuesta no constituye contrato; la prestacion efectiva queda sujeta a contrato marco y anexos operativos."
+  },
+  "billing": {
+    "model": "monthly_postpaid",
+    "platformFee": 0,
+    "minimumMonthlyConsumption": 0,
+    "currency": "USD",
+    "taxIncluded": false
+  },
+  "modalities": {
+    "Cliente Normal": {
+      "description": "Solo consumidor; no aporta informacion al ecosistema.",
+      "pricingRule": "tarifa_publica",
+      "benefits": [
+        "Portal",
+        "API",
+        "Soporte",
+        "3 primeras ediciones de Pulso gratis"
+      ]
+    },
+    "Data Partner Contributor": {
+      "description": "Solo reportante; reporta cartera completa y datos de contactabilidad.",
+      "pricingRule": "cap_relacional_1_to_2_basic",
+      "benefits": [
+        "Consultas basicas/brutas sin costo bajo cap 1:2",
+        "Insights Pack incluido",
+        "Upgrade libre a Activo cuando lo necesite"
+      ],
+      "operationalAssumption": "La propuesta usa 'consultas brutas'; se mapea a 'consultas basicas' para respetar la regla operativa definida por Mateo."
+    },
+    "Data Partner Active": {
+      "description": "Reporta cartera y consume informacion con tarifa preferencial.",
+      "pricingRule": "preferential_tariff",
+      "benefits": [
+        "Bruto/basico gratis con consentimiento cuando aplique",
+        "Tarifa preferencial para calculado/completo",
+        "Insights Pack completo",
+        "10% descuento adicional en reportes premium"
+      ]
+    },
+    "Data Partner Founding": {
+      "description": "Primeros partners por sector prioritario; reporta informacion y co-construye score sectorial.",
+      "pricingRule": "lowest_tariff_12_months",
+      "limits": {
+        "maxPartners": 30,
+        "sectors": 5,
+        "slotsPerPrioritySector": 6,
+        "benefitWindowMonths": 12
+      },
+      "benefits": [
+        "Tarifa mas baja por 12 meses",
+        "Bruto/basico gratis con consentimiento cuando aplique",
+        "Insights Pack completo",
+        "Co-creacion de score sectorial",
+        "Beta de productos"
+      ]
+    }
+  },
+  "queryTariffMatrix": [
+    {
+      "monthlyVolume": "1-100",
+      "clienteNormal": 1.0,
+      "dataPartnerActive": 0.8,
+      "dataPartnerFounding": 0.5
+    },
+    {
+      "monthlyVolume": "101-500",
+      "clienteNormal": 0.9,
+      "dataPartnerActive": 0.65,
+      "dataPartnerFounding": 0.4
+    },
+    {
+      "monthlyVolume": "501-1000",
+      "clienteNormal": 0.8,
+      "dataPartnerActive": 0.5,
+      "dataPartnerFounding": 0.3
+    },
+    {
+      "monthlyVolume": "1001-5000",
+      "clienteNormal": 0.6,
+      "dataPartnerActive": 0.35,
+      "dataPartnerFounding": 0.22
+    },
+    {
+      "monthlyVolume": "5001-10000",
+      "clienteNormal": 0.45,
+      "dataPartnerActive": 0.25,
+      "dataPartnerFounding": 0.17
+    },
+    {
+      "monthlyVolume": "10001+",
+      "clienteNormal": 0.3,
+      "dataPartnerActive": 0.18,
+      "dataPartnerFounding": 0.15
+    }
+  ],
+  "decisionCredits": {
+    "Data Partner Contributor": {
+      "ratio": "1:2",
+      "appliesTo": "basic_report",
+      "excessTariff": "cliente_normal"
+    },
+    "Data Partner Active": {
+      "ratio": "1:1",
+      "appliesTo": "preferential_benefits",
+      "excessTariff": "cliente_normal"
+    },
+    "Data Partner Founding": {
+      "ratio": "1:1",
+      "appliesTo": "preferential_benefits",
+      "excessTariff": "cliente_normal"
+    }
+  },
+  "goLiveProcess": [
+    {
+      "step": "NDA + contrato marco",
+      "slaBusinessDays": 5
+    },
+    {
+      "step": "Anexo tecnico",
+      "slaBusinessDays": 10
+    },
+    {
+      "step": "Onboarding tecnico",
+      "slaBusinessDays": 15,
+      "qualityThreshold": 0.95
+    },
+    {
+      "step": "Go-live",
+      "target": "T+30 dias"
+    }
+  ]
+}

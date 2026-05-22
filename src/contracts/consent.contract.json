@@ -1,0 +1,64 @@
+{
+  "version": "dd-consent-v1",
+  "status": "operational_draft_from_audited_redclic_evidence",
+  "owner": "Decision Data",
+  "source": {
+    "type": "audited_reference_pdf",
+    "title": "Evidenciables_consentimiento_de_titular_emision_reporte.pdf",
+    "driveFileId": "12yo2qPgLp5R9kgOF9DkkGX7AW4E3jmSw",
+    "sourceBrand": "Red Clic",
+    "adaptedBrand": "Decision Data",
+    "sourceDate": "2026-01-20",
+    "keyEvidence": [
+      "Registro e identificacion del titular",
+      "Gestion y almacenamiento de consentimientos",
+      "Emision del reporte crediticio",
+      "Generacion de evidencias para auditoria y trazabilidad",
+      "Atencion de solicitudes asociadas al ejercicio de derechos del titular"
+    ]
+  },
+  "principles": [
+    "consentimiento libre, especifico, informado e inequivoco",
+    "finalidad limitada a consulta, validacion, emision de reporte y trazabilidad",
+    "no invasivo: no pide autorizaciones generales ajenas al servicio",
+    "titular puede ejercer derechos de acceso, rectificacion, actualizacion, eliminacion, oposicion y revocatoria cuando corresponda",
+    "evidencia auditable por version, canal, fecha, IP, usuario, producto y estado"
+  ],
+  "strategicConsentCopy": {
+    "shortLabel": "Autorizacion de consulta Decision Data",
+    "body": "Autorizo de manera libre, informada, expresa y especifica a Decision Data y al cliente autorizado que declara una relacion comercial, crediticia o de evaluacion legitima conmigo, para consultar, validar, procesar y generar mi reporte de informacion crediticia y comercial, exclusivamente para evaluar, gestionar o dar seguimiento a una solicitud, relacion comercial, credito, servicio, cobranza o decision de riesgo relacionada conmigo. Declaro que he sido informado de la finalidad del tratamiento, de los datos que podran ser consultados o reportados, de la identidad del responsable, de la posibilidad de ejercer mis derechos como titular y de que la consulta quedara registrada para fines de evidencia, auditoria y trazabilidad.",
+    "nonInvasiveFooter": "Esta autorizacion no implica aprobacion automatica de credito, no permite usos ajenos a la finalidad informada y puede ser gestionada conforme a los derechos del titular y politicas de proteccion de datos aplicables.",
+    "checkboxText": "Acepto que Decision Data genere evidencia de mi consentimiento y registre la consulta para trazabilidad BAC.",
+    "channelHint": "Mostrar en portal, API o formulario del cliente antes de ejecutar la consulta."
+  },
+  "requiredEvidence": [
+    "consentVersion",
+    "holderIdentifier",
+    "holderIdentifierType",
+    "acceptanceTimestamp",
+    "acceptanceChannel",
+    "acceptanceIp",
+    "requestingCompanyId",
+    "requestingUserId",
+    "product",
+    "purpose",
+    "termsVersion",
+    "privacyPolicyVersion",
+    "evidenceHash",
+    "status"
+  ],
+  "bacMapping": {
+    "consent": "consentVersion + evidenceHash + status",
+    "user": "requestingUserId",
+    "channel": "acceptanceChannel",
+    "ip": "acceptanceIp",
+    "product": "product",
+    "status": "status"
+  },
+  "implementationGuardrails": [
+    "No ejecutar consultas si no existe consentimiento valido cuando aplique.",
+    "No reutilizar consentimiento para finalidades diferentes.",
+    "Guardar evidencia append-only para auditoria.",
+    "Mostrar texto claro, breve y entendible para el titular."
+  ]
+}
