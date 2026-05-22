@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.*
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime artifacts
+uploads/
+exports/
+tmp/
+*.sqlite
+*.db
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

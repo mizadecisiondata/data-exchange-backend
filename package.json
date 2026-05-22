@@ -1,0 +1,17 @@
+{
+  "name": "data-exchange-backend",
+  "version": "0.0.0-phase-0",
+  "private": true,
+  "type": "module",
+  "description": "Backend bootstrap for Decision Data Data Exchange.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node src/server.mjs",
+    "start": "node src/server.mjs",
+    "health": "node scripts/healthcheck.mjs",
+    "lint": "node scripts/lint-placeholder.mjs",
+    "test": "node scripts/test-placeholder.mjs"
+  }
+}
