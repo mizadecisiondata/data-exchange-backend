@@ -6,7 +6,7 @@
   "portals": {
     "client": "separate_client_portal",
     "admin": "separate_admin_portal",
-    "agentWorkbench": "admin_only"
+    "devMonitor": "external_to_product"
   },
   "commercialModes": [
     "Cliente Normal",
@@ -148,8 +148,8 @@
     },
     {
       "method": "GET",
-      "path": "/api/v1/agent-workbench/events",
-      "status": "reserved_admin_only"
+      "path": "/internal/dev-monitor/events",
+      "status": "reserved_internal_dev_only"
     }
   ],
   "resolvedInputsFromMateo": [

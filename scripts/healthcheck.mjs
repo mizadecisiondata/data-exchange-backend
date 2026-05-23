@@ -7,13 +7,13 @@ const health = buildHealthResponse(config, new Date("2026-05-22T00:00:00.000Z"))
 const expected = [
   health.status === "ok",
   health.service === "data-exchange-backend",
-  health.phase === "0",
+  health.phase === "1",
   health.rules.billingMode === "monthly_postpaid",
   health.rules.allowPrepaidPrimaryModel === false,
   health.rules.ingestionQualityThreshold === 0.95,
   health.rules.bacAppendOnly === true,
   health.rules.duplicatePolicy === "discard_without_error_or_credits",
-  health.portals.agentWorkbench === "admin_only_reserved"
+  health.portals.devMonitor === "external_reserved"
 ];
 
 if (expected.some((value) => value !== true)) {

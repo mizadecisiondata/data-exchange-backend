@@ -54,7 +54,7 @@ GET http://localhost:4100/contracts/v1/pricing
 - `queries`: consulta individual, por bloque y API.
 - `billing`: postpago mensual y estimacion.
 - `bac`: auditoria completa.
-- `agent-workbench`: telemetria de agentes para portal admin.
+- `internal-dev-monitor`: telemetria de agentes para visor externo de desarrollo, fuera del portal admin productivo.
 
 No se implementan flujos de negocio reales en Fase 0.
 

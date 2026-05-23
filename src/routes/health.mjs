@@ -2,7 +2,7 @@ export function buildHealthResponse(config, now = new Date()) {
   return {
     status: "ok",
     service: config.serviceName,
-    phase: "0",
+    phase: "1",
     environment: config.environment,
     timestamp: now.toISOString(),
     rules: {
@@ -16,7 +16,7 @@ export function buildHealthResponse(config, now = new Date()) {
     portals: {
       client: "reserved",
       admin: "reserved",
-      agentWorkbench: "admin_only_reserved"
+      devMonitor: "external_reserved"
     }
   };
 }

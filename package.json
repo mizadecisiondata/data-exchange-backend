@@ -1,6 +1,6 @@
 {
   "name": "data-exchange-backend",
-  "version": "0.0.0-phase-0",
+  "version": "0.2.0-phase-1-contract",
   "private": true,
   "type": "module",
   "description": "Backend bootstrap for Decision Data Data Exchange.",
