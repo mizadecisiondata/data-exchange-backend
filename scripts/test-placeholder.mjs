@@ -13,12 +13,14 @@ import {
 } from "../src/routes/auth.mjs";
 import {
   approveDemoAccessRequest,
+  createDemoSubUser,
   getDemoState,
   getUsageResponse,
   ingestInformationBlocks,
   resetDemoState,
   runBatchQuery,
-  runIndividualQuery
+  runIndividualQuery,
+  updateDemoSubUser
 } from "../src/routes/demo.mjs";
 import { buildHealthResponse } from "../src/routes/health.mjs";
 
@@ -43,6 +45,16 @@ const demoApproved = approveDemoAccessRequest("REQ-2026-MEGADATOS-DEMO", {});
 const demoUpload = ingestInformationBlocks();
 const demoQuery = runIndividualQuery({ product: "complete_report" });
 const demoBatch = runBatchQuery();
+const demoSubUser = createDemoSubUser({
+  name: "Operador cobranza",
+  email: "operador@megadatos.demo",
+  role: "Operador cliente",
+  allowedModules: ["inicio", "estado", "consulta-individual"]
+});
+const demoSubUserUpdate = updateDemoSubUser(demoSubUser.subUser.id, {
+  active: false,
+  allowedModules: ["inicio", "estado"]
+});
 const demoUsage = getUsageResponse();
 
 if (!Object.hasOwn(health.rules, "queryIdentifierPolicy")) {
@@ -107,6 +119,10 @@ if (!demoQuery.audit.bac || !demoQuery.audit.consent || demoQuery.audit.status !
 
 if (demoBatch.batch.rowsProcessed !== 3 || demoUsage.invoicePreview.billingMode !== "monthly_postpaid") {
   throw new Error("Demo batch query and usage invoice preview must be functional.");
+}
+
+if (!demoSubUser.subUser.allowedModules.includes("consulta-individual") || demoSubUserUpdate.payload.subUser.status !== "blocked") {
+  throw new Error("Client superadmin must be able to create and restrict subusers.");
 }
 
 console.log("Backend bootstrap tests ok.");

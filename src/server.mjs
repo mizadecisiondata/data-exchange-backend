@@ -15,6 +15,7 @@ import {
 import {
   approveDemoAccessRequest,
   buildTemplate,
+  createDemoSubUser,
   getDemoState,
   getUsageResponse,
   ingestInformationBlocks,
@@ -22,7 +23,8 @@ import {
   observeDemoAccessRequest,
   resetDemoState,
   runBatchQuery,
-  runIndividualQuery
+  runIndividualQuery,
+  updateDemoSubUser
 } from "./routes/demo.mjs";
 import { buildHealthResponse, writeJson } from "./routes/health.mjs";
 
@@ -123,6 +125,18 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname === "/api/v1/usage") {
     writeJson(response, 200, getUsageResponse());
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/client/subusers") {
+    writeJson(response, 201, createDemoSubUser(await readJsonBody(request)));
+    return;
+  }
+
+  const subUserMatch = url.pathname.match(/^\/api\/v1\/client\/subusers\/([^/]+)$/);
+  if (request.method === "POST" && subUserMatch) {
+    const result = updateDemoSubUser(subUserMatch[1], await readJsonBody(request));
+    writeJson(response, result.statusCode, result.payload);
     return;
   }
 

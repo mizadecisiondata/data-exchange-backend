@@ -25,6 +25,8 @@ const sampleBatchRows = [
   { identifierType: "codigo_sb", identifier: "SB-000234", product: "complete_report", channel: "batch" }
 ];
 
+const defaultSubUserModules = ["inicio", "estado", "carga", "consulta-individual", "consulta-bloque", "auditoria"];
+
 function createState() {
   return {
     client: {
@@ -41,6 +43,18 @@ function createState() {
     uploads: [],
     queries: [],
     batchQueries: [],
+    subUsers: [
+      {
+        id: "subuser_analista_demo",
+        name: "Analista de riesgos demo",
+        email: "analista@megadatos.demo",
+        role: "Analista de consultas",
+        status: "active",
+        allowedModules: defaultSubUserModules,
+        mustChangeTemporaryPassword: true,
+        createdAt: "2026-05-23T08:10:00.000Z"
+      }
+    ],
     usage: {
       basicReports: 0,
       completeReports: 0,
@@ -78,6 +92,7 @@ export function getDemoState() {
     uploads: state.uploads.map((item) => ({ ...item })),
     queries: state.queries.map((item) => ({ ...item })),
     batchQueries: state.batchQueries.map((item) => ({ ...item })),
+    subUsers: state.subUsers.map((item) => ({ ...item, allowedModules: [...item.allowedModules] })),
     usage: { ...state.usage },
     outbox: state.outbox.map((item) => ({ ...item })),
     accessRequest: buildAccessRequest(),
@@ -308,6 +323,68 @@ export function getUsageResponse() {
   };
 }
 
+export function createDemoSubUser(body = {}) {
+  const subUser = {
+    id: `subuser_${Date.now()}`,
+    name: body.name ?? "Nuevo subusuario",
+    email: body.email ?? `subusuario.${state.subUsers.length + 1}@megadatos.demo`,
+    role: body.role ?? "Operador cliente",
+    status: "active",
+    allowedModules: normalizeModules(body.allowedModules),
+    mustChangeTemporaryPassword: true,
+    createdAt: nowIso()
+  };
+
+  state.subUsers.unshift(subUser);
+  state.outbox.unshift({
+    id: `email_subuser_${Date.now()}`,
+    type: "subuser_temporary_credentials",
+    to: subUser.email,
+    subject: "Acceso subusuario Decision Data",
+    status: "simulated_not_sent",
+    body: "Credenciales temporales de subusuario generadas en sandbox.",
+    createdAt: nowIso()
+  });
+
+  return {
+    status: "subuser_created",
+    subUser: cloneSubUser(subUser),
+    state: getDemoState()
+  };
+}
+
+export function updateDemoSubUser(id, body = {}) {
+  const subUser = state.subUsers.find((item) => item.id === id);
+  if (!subUser) {
+    return {
+      statusCode: 404,
+      payload: {
+        status: "not_found",
+        subUserId: id
+      }
+    };
+  }
+
+  if (Array.isArray(body.allowedModules)) {
+    subUser.allowedModules = normalizeModules(body.allowedModules);
+  }
+  if (typeof body.active === "boolean") {
+    subUser.status = body.active ? "active" : "blocked";
+  }
+  if (body.role) {
+    subUser.role = body.role;
+  }
+
+  return {
+    statusCode: 200,
+    payload: {
+      status: "subuser_updated",
+      subUser: cloneSubUser(subUser),
+      state: getDemoState()
+    }
+  };
+}
+
 function buildAccessRequest() {
   const missing = Object.entries(state.documents)
     .filter(([, value]) => value !== true)
@@ -406,4 +483,17 @@ function buildInvoicePreview() {
 
 function roundMoney(value) {
   return Math.round(value * 100) / 100;
+}
+
+function normalizeModules(modules) {
+  const allowed = new Set(["inicio", "estado", "documentos", "carga", "consulta-individual", "consulta-bloque", "api", "facturacion", "auditoria", "notificaciones"]);
+  const source = Array.isArray(modules) && modules.length > 0 ? modules : defaultSubUserModules;
+  return [...new Set(source.filter((moduleId) => allowed.has(moduleId)))];
+}
+
+function cloneSubUser(subUser) {
+  return {
+    ...subUser,
+    allowedModules: [...subUser.allowedModules]
+  };
 }
