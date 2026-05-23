@@ -8,13 +8,22 @@ import {
   readPricingContract
 } from "./routes/contracts.mjs";
 import {
-  approveAccessRequestResponse,
-  listAccessRequestsResponse,
   loginResponse,
-  observeAccessRequestResponse,
   readJsonBody,
   registerClientResponse
 } from "./routes/auth.mjs";
+import {
+  approveDemoAccessRequest,
+  buildTemplate,
+  getDemoState,
+  getUsageResponse,
+  ingestInformationBlocks,
+  listDemoAccessRequests,
+  observeDemoAccessRequest,
+  resetDemoState,
+  runBatchQuery,
+  runIndividualQuery
+} from "./routes/demo.mjs";
 import { buildHealthResponse, writeJson } from "./routes/health.mjs";
 
 const config = getConfig();
@@ -64,20 +73,56 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/api/v1/admin/access-requests") {
-    writeJson(response, 200, listAccessRequestsResponse());
+    writeJson(response, 200, listDemoAccessRequests());
     return;
   }
 
   const observeMatch = url.pathname.match(/^\/api\/v1\/admin\/access-requests\/([^/]+)\/observe$/);
   if (request.method === "POST" && observeMatch) {
-    writeJson(response, 202, observeAccessRequestResponse(observeMatch[1], await readJsonBody(request)));
+    writeJson(response, 202, observeDemoAccessRequest(observeMatch[1], await readJsonBody(request)));
     return;
   }
 
   const approveMatch = url.pathname.match(/^\/api\/v1\/admin\/access-requests\/([^/]+)\/approve$/);
   if (request.method === "POST" && approveMatch) {
-    const result = approveAccessRequestResponse(approveMatch[1], await readJsonBody(request));
+    const result = approveDemoAccessRequest(approveMatch[1], await readJsonBody(request));
     writeJson(response, result.statusCode, result.payload);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/demo/state") {
+    writeJson(response, 200, getDemoState());
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/demo/reset") {
+    writeJson(response, 200, resetDemoState());
+    return;
+  }
+
+  const templateMatch = url.pathname.match(/^\/api\/v1\/templates\/([^/]+)$/);
+  if (request.method === "GET" && templateMatch) {
+    writeText(response, 200, buildTemplate(templateMatch[1]), "text/csv; charset=utf-8");
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/ingestion/information-blocks") {
+    writeJson(response, 202, ingestInformationBlocks(await readJsonBody(request)));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/queries") {
+    writeJson(response, 200, runIndividualQuery(await readJsonBody(request)));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/batch-queries") {
+    writeJson(response, 202, runBatchQuery(await readJsonBody(request)));
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/usage") {
+    writeJson(response, 200, getUsageResponse());
     return;
   }
 
@@ -108,3 +153,11 @@ function shutdown(signal) {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+function writeText(response, statusCode, body, contentType) {
+  response.writeHead(statusCode, {
+    "content-type": contentType,
+    "content-length": Buffer.byteLength(body)
+  });
+  response.end(body);
+}

@@ -9,6 +9,7 @@ const requiredFiles = [
   "src/contracts/onboarding.contract.json",
   "src/contracts/pricing.contract.json",
   "src/routes/auth.mjs",
+  "src/routes/demo.mjs",
   "src/routes/contracts.mjs",
   "src/routes/health.mjs",
   ".env.example",

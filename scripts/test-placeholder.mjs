@@ -11,6 +11,15 @@ import {
   loginResponse,
   registerClientResponse
 } from "../src/routes/auth.mjs";
+import {
+  approveDemoAccessRequest,
+  getDemoState,
+  getUsageResponse,
+  ingestInformationBlocks,
+  resetDemoState,
+  runBatchQuery,
+  runIndividualQuery
+} from "../src/routes/demo.mjs";
 import { buildHealthResponse } from "../src/routes/health.mjs";
 
 const health = buildHealthResponse(getConfig(), new Date("2026-05-22T00:00:00.000Z"));
@@ -28,6 +37,13 @@ const validRegistration = registerClientResponse({
   mode: "Data Partner Founding"
 });
 const blockedApproval = approveAccessRequestResponse("REQ-2026-MEGADATOS-DEMO", { forcePricingChange: true });
+resetDemoState();
+const demoInitial = getDemoState();
+const demoApproved = approveDemoAccessRequest("REQ-2026-MEGADATOS-DEMO", {});
+const demoUpload = ingestInformationBlocks();
+const demoQuery = runIndividualQuery({ product: "complete_report" });
+const demoBatch = runBatchQuery();
+const demoUsage = getUsageResponse();
 
 if (!Object.hasOwn(health.rules, "queryIdentifierPolicy")) {
   throw new Error("Health response must expose query identifier guardrail.");
@@ -75,6 +91,22 @@ if (validRegistration.statusCode !== 202 || validRegistration.payload.production
 
 if (blockedApproval.statusCode !== 409) {
   throw new Error("Pricing or commercial exceptions must block automated approval.");
+}
+
+if (demoInitial.client.productionAccess !== false || demoApproved.payload.productionAccess !== true) {
+  throw new Error("Demo client must move from pending to approved through admin approval.");
+}
+
+if (demoUpload.upload.duplicateRows !== 1 || demoUpload.upload.errorRows !== 0 || demoUpload.upload.qualityScore < 0.95) {
+  throw new Error("Demo ingestion must discard duplicates without counting them as errors.");
+}
+
+if (!demoQuery.audit.bac || !demoQuery.audit.consent || demoQuery.audit.status !== "completed") {
+  throw new Error("Demo query must register BAC, consent and status.");
+}
+
+if (demoBatch.batch.rowsProcessed !== 3 || demoUsage.invoicePreview.billingMode !== "monthly_postpaid") {
+  throw new Error("Demo batch query and usage invoice preview must be functional.");
 }
 
 console.log("Backend bootstrap tests ok.");

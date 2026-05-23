@@ -1,6 +1,6 @@
 {
   "name": "data-exchange-backend",
-  "version": "0.3.0-phase-2-auth-visual",
+  "version": "0.4.0-phase-2-functional-sandbox",
   "private": true,
   "type": "module",
   "description": "Backend bootstrap for Decision Data Data Exchange.",
