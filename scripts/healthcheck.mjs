@@ -7,7 +7,7 @@ const health = buildHealthResponse(config, new Date("2026-05-22T00:00:00.000Z"))
 const expected = [
   health.status === "ok",
   health.service === "data-exchange-backend",
-  health.phase === "1",
+  health.phase === "2-auth-visual",
   health.rules.billingMode === "monthly_postpaid",
   health.rules.allowPrepaidPrimaryModel === false,
   health.rules.ingestionQualityThreshold === 0.95,

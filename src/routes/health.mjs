@@ -2,7 +2,7 @@ export function buildHealthResponse(config, now = new Date()) {
   return {
     status: "ok",
     service: config.serviceName,
-    phase: "1",
+    phase: "2-auth-visual",
     environment: config.environment,
     timestamp: now.toISOString(),
     rules: {

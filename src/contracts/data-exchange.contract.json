@@ -114,17 +114,27 @@
     {
       "method": "POST",
       "path": "/api/v1/auth/login",
-      "status": "reserved_phase_2"
+      "status": "implemented_phase_2_visual_only"
     },
     {
       "method": "POST",
       "path": "/api/v1/auth/client-registration",
-      "status": "reserved_phase_2"
+      "status": "implemented_phase_2_visual_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/access-requests",
+      "status": "implemented_phase_2_visual_only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/access-requests/{id}/observe",
+      "status": "implemented_phase_2_visual_only"
     },
     {
       "method": "POST",
       "path": "/api/v1/admin/access-requests/{id}/approve",
-      "status": "reserved_phase_2"
+      "status": "implemented_phase_2_visual_only"
     },
     {
       "method": "POST",

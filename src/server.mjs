@@ -7,11 +7,19 @@ import {
   readOnboardingContract,
   readPricingContract
 } from "./routes/contracts.mjs";
+import {
+  approveAccessRequestResponse,
+  listAccessRequestsResponse,
+  loginResponse,
+  observeAccessRequestResponse,
+  readJsonBody,
+  registerClientResponse
+} from "./routes/auth.mjs";
 import { buildHealthResponse, writeJson } from "./routes/health.mjs";
 
 const config = getConfig();
 
-const server = http.createServer((request, response) => {
+const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
   if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
@@ -44,11 +52,40 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/login") {
+    writeJson(response, 200, loginResponse(await readJsonBody(request)));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/auth/client-registration") {
+    const result = registerClientResponse(await readJsonBody(request));
+    writeJson(response, result.statusCode, result.payload);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/admin/access-requests") {
+    writeJson(response, 200, listAccessRequestsResponse());
+    return;
+  }
+
+  const observeMatch = url.pathname.match(/^\/api\/v1\/admin\/access-requests\/([^/]+)\/observe$/);
+  if (request.method === "POST" && observeMatch) {
+    writeJson(response, 202, observeAccessRequestResponse(observeMatch[1], await readJsonBody(request)));
+    return;
+  }
+
+  const approveMatch = url.pathname.match(/^\/api\/v1\/admin\/access-requests\/([^/]+)\/approve$/);
+  if (request.method === "POST" && approveMatch) {
+    const result = approveAccessRequestResponse(approveMatch[1], await readJsonBody(request));
+    writeJson(response, result.statusCode, result.payload);
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/") {
     writeJson(response, 200, {
       service: config.serviceName,
       message: "Data Exchange backend bootstrap. Use /health.",
-      phase: "0"
+      phase: "2-auth-visual"
     });
     return;
   }

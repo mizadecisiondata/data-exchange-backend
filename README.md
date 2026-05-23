@@ -62,6 +62,25 @@ No se implementan flujos de negocio reales en Fase 0.
 
 `GET /contracts/v1` expone un contrato tecnico de guardrails y rutas reservadas para alinear frontend, backend y aprobacion de Mateo. Este contrato no ejecuta pricing, decision credits, consultas ni ingesta real; solo fija las reglas que no deben cambiar sin aprobacion.
 
+## Fase 2 Visual Auth / Onboarding
+
+Endpoints locales implementados sin persistencia ni envio real de correo:
+
+```text
+POST /api/v1/auth/login
+POST /api/v1/auth/client-registration
+GET  /api/v1/admin/access-requests
+POST /api/v1/admin/access-requests/{id}/observe
+POST /api/v1/admin/access-requests/{id}/approve
+```
+
+Estos endpoints mantienen los guardrails:
+
+- cliente pendiente solo puede usar estado, documentos, carga no productiva y notificaciones
+- productivo se bloquea hasta aprobacion documental completa
+- correo de clave temporal queda reservado; no se envia en esta fase
+- aprobaciones con excepciones comerciales o pricing quedan bloqueadas y requieren Mateo
+
 Los subcontratos versionados son:
 
 - `consent.contract.json`: consentimiento Decision Data basado en evidencia auditada Red Clic.

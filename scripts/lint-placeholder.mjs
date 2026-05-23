@@ -8,6 +8,7 @@ const requiredFiles = [
   "src/contracts/data-partner-dictionary.contract.json",
   "src/contracts/onboarding.contract.json",
   "src/contracts/pricing.contract.json",
+  "src/routes/auth.mjs",
   "src/routes/contracts.mjs",
   "src/routes/health.mjs",
   ".env.example",
