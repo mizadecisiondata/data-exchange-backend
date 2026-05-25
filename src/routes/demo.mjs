@@ -1,3 +1,7 @@
+import { readPricingContract } from "./contracts.mjs";
+
+const pricingContract = readPricingContract();
+
 const nowIso = () => new Date().toISOString();
 
 const initialDocuments = {
@@ -403,24 +407,75 @@ function buildAccessRequest() {
 }
 
 function calculateTariff(product) {
-  const hadCredits = state.client.creditsBalance > 0;
-  const usesCredit = hadCredits;
-  const estimatedValue = product === "basic_report"
-    ? (usesCredit ? 0 : 1)
-    : (usesCredit ? 0.5 : 1);
+  const nextMonthlyVolume = state.usage.basicReports + state.usage.completeReports + 1;
+  const tier = findPricingTier(nextMonthlyVolume);
+  const mode = state.client.mode;
+  const tariffKey = getTariffKey(mode, product);
+  const matrixValue = tier[tariffKey];
+  const isDataPartner = mode.startsWith("Data Partner");
+  const basicIncluded = product === "basic_report" && isDataPartner;
+  const estimatedValue = basicIncluded ? 0 : matrixValue;
+  const usesCredit = basicIncluded && state.client.creditsBalance > 0;
 
   if (usesCredit) {
-    state.client.creditsBalance -= 1;
+    state.client.creditsBalance = Math.max(0, state.client.creditsBalance - 1);
     state.usage.creditsUsed += 1;
   }
 
   return {
-    mode: state.client.mode,
+    mode,
     product,
     creditApplied: usesCredit,
-    rule: usesCredit ? "founding_1_to_1_preferential_simulation" : "cliente_normal_excess_tariff",
-    estimatedValue
+    rule: buildTariffRule({ mode, product, basicIncluded, tariffKey }),
+    tier: tier.monthlyVolume,
+    unitPrice: matrixValue,
+    estimatedValue: roundMoney(estimatedValue)
   };
+}
+
+function findPricingTier(monthlyVolume) {
+  return pricingContract.queryTariffMatrix.find((tier) => {
+    if (tier.monthlyVolume.endsWith("+")) {
+      return monthlyVolume >= Number(tier.monthlyVolume.replace("+", ""));
+    }
+    const [minRaw, maxRaw] = tier.monthlyVolume.split("-");
+    const min = Number(minRaw);
+    const max = Number(maxRaw);
+    return monthlyVolume >= min && monthlyVolume <= max;
+  }) ?? pricingContract.queryTariffMatrix.at(-1);
+}
+
+function getTariffKey(mode, product) {
+  if (mode === "Data Partner Founding") {
+    return "dataPartnerFounding";
+  }
+  if (mode === "Data Partner Active") {
+    return "dataPartnerActive";
+  }
+  if (mode === "Data Partner Contributor" && product === "basic_report") {
+    return "clienteNormal";
+  }
+  return "clienteNormal";
+}
+
+function buildTariffRule({ mode, product, basicIncluded, tariffKey }) {
+  if (basicIncluded) {
+    return `${normalizeRuleMode(mode)}_basic_included_with_consent`;
+  }
+  if (tariffKey === "dataPartnerFounding") {
+    return "data_partner_founding_lowest_tariff_12_months";
+  }
+  if (tariffKey === "dataPartnerActive") {
+    return "data_partner_active_preferential_tariff";
+  }
+  if (mode === "Data Partner Contributor" && product !== "basic_report") {
+    return "data_partner_contributor_complete_at_cliente_normal_tariff";
+  }
+  return "cliente_normal_public_tariff";
+}
+
+function normalizeRuleMode(mode) {
+  return mode.toLowerCase().replaceAll(" ", "_");
 }
 
 function buildQueryEvent({ identifierType, identifier, product, channel, user, ip, tariff }) {
@@ -436,6 +491,9 @@ function buildQueryEvent({ identifierType, identifier, product, channel, user, i
     product,
     tariff: tariff.rule,
     estimatedValue: tariff.estimatedValue,
+    tariffTier: tariff.tier,
+    unitPrice: tariff.unitPrice,
+    creditApplied: tariff.creditApplied,
     status: "completed",
     createdAt: nowIso()
   };
