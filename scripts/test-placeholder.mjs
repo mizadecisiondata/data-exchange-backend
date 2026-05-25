@@ -44,6 +44,10 @@ const demoInitial = getDemoState();
 const demoApproved = approveDemoAccessRequest("REQ-2026-MEGADATOS-DEMO", {});
 const demoUpload = ingestInformationBlocks();
 const demoQuery = runIndividualQuery({ product: "complete_report" });
+const demoCreditQuery2 = runIndividualQuery({ product: "complete_report" });
+const demoCreditQuery3 = runIndividualQuery({ product: "complete_report" });
+const demoCreditQuery4 = runIndividualQuery({ product: "complete_report" });
+const demoExcessQuery = runIndividualQuery({ product: "complete_report" });
 const demoBatch = runBatchQuery();
 const demoSubUser = createDemoSubUser({
   name: "Operador cobranza",
@@ -117,8 +121,16 @@ if (!demoQuery.audit.bac || !demoQuery.audit.consent || demoQuery.audit.status !
   throw new Error("Demo query must register BAC, consent and status.");
 }
 
-if (demoQuery.audit.tariff !== "data_partner_founding_lowest_tariff_12_months" || demoQuery.audit.estimatedValue !== 0.5) {
-  throw new Error("Founding complete report must use the Founding tariff matrix, not Cliente Normal.");
+if (demoQuery.audit.tariff !== "data_partner_founding_credit_tariff_1_to_1" || demoQuery.audit.estimatedValue !== 0.5 || demoQuery.audit.creditApplied !== true) {
+  throw new Error("Founding complete report within credits must use the Founding tariff matrix.");
+}
+
+if (demoCreditQuery4.audit.tariff !== "data_partner_founding_credit_tariff_1_to_1" || demoExcessQuery.audit.tariff !== "cliente_normal_excess_tariff" || demoExcessQuery.audit.estimatedValue !== 1) {
+  throw new Error("Founding credit exhaustion must move excess queries to Cliente Normal tariff.");
+}
+
+if (demoExcessQuery.state.invoicePreview.breakdown.dataPartnerCreditQueries !== 4 || demoExcessQuery.state.invoicePreview.breakdown.excessNormalQueries !== 1) {
+  throw new Error("Invoice preview must split Data Partner credit queries from normal-tariff excess.");
 }
 
 if (demoBatch.batch.rowsProcessed !== 3 || demoUsage.invoicePreview.billingMode !== "monthly_postpaid") {

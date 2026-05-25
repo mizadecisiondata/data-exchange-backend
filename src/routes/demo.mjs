@@ -65,7 +65,13 @@ function createState() {
       apiCalls: 0,
       estimatedSubtotal: 0,
       creditsGenerated: 0,
-      creditsUsed: 0
+      creditsUsed: 0,
+      dataPartnerCreditQueries: 0,
+      dataPartnerCreditSubtotal: 0,
+      excessNormalQueries: 0,
+      excessNormalSubtotal: 0,
+      clienteNormalQueries: 0,
+      clienteNormalSubtotal: 0
     },
     outbox: [
       {
@@ -410,25 +416,27 @@ function calculateTariff(product) {
   const nextMonthlyVolume = state.usage.basicReports + state.usage.completeReports + 1;
   const tier = findPricingTier(nextMonthlyVolume);
   const mode = state.client.mode;
-  const tariffKey = getTariffKey(mode, product);
+  const creditPolicy = getDecisionCreditPolicy(mode, product);
+  const hasCredit = state.client.creditsBalance >= creditPolicy.creditCost && creditPolicy.creditCost > 0;
+  const tariffKey = hasCredit ? creditPolicy.preferredTariffKey : getExcessTariffKey(mode, product);
   const matrixValue = tier[tariffKey];
-  const isDataPartner = mode.startsWith("Data Partner");
-  const basicIncluded = product === "basic_report" && isDataPartner;
-  const estimatedValue = basicIncluded ? 0 : matrixValue;
-  const usesCredit = basicIncluded && state.client.creditsBalance > 0;
+  const usesCredit = hasCredit;
+  const estimatedValue = matrixValue;
 
   if (usesCredit) {
-    state.client.creditsBalance = Math.max(0, state.client.creditsBalance - 1);
-    state.usage.creditsUsed += 1;
+    state.client.creditsBalance = roundCredits(state.client.creditsBalance - creditPolicy.creditCost);
+    state.usage.creditsUsed = roundCredits(state.usage.creditsUsed + creditPolicy.creditCost);
   }
 
   return {
     mode,
     product,
     creditApplied: usesCredit,
-    rule: buildTariffRule({ mode, product, basicIncluded, tariffKey }),
+    rule: buildTariffRule({ mode, product, usesCredit, tariffKey }),
     tier: tier.monthlyVolume,
     unitPrice: matrixValue,
+    creditCost: usesCredit ? creditPolicy.creditCost : 0,
+    bucket: getTariffBucket({ mode, usesCredit, tariffKey }),
     estimatedValue: roundMoney(estimatedValue)
   };
 }
@@ -445,37 +453,50 @@ function findPricingTier(monthlyVolume) {
   }) ?? pricingContract.queryTariffMatrix.at(-1);
 }
 
-function getTariffKey(mode, product) {
+function getDecisionCreditPolicy(mode, product) {
   if (mode === "Data Partner Founding") {
-    return "dataPartnerFounding";
+    return { creditCost: 1, preferredTariffKey: "dataPartnerFounding" };
   }
   if (mode === "Data Partner Active") {
-    return "dataPartnerActive";
+    return { creditCost: 1, preferredTariffKey: "dataPartnerActive" };
   }
   if (mode === "Data Partner Contributor" && product === "basic_report") {
-    return "clienteNormal";
+    return { creditCost: 0.5, preferredTariffKey: "clienteNormal" };
   }
-  return "clienteNormal";
+  return { creditCost: 0, preferredTariffKey: "clienteNormal" };
 }
 
-function buildTariffRule({ mode, product, basicIncluded, tariffKey }) {
-  if (basicIncluded) {
-    return `${normalizeRuleMode(mode)}_basic_included_with_consent`;
+function getExcessTariffKey(mode, product) {
+  if (mode.startsWith("Data Partner")) {
+    return "clienteNormal";
   }
-  if (tariffKey === "dataPartnerFounding") {
-    return "data_partner_founding_lowest_tariff_12_months";
+  return getDecisionCreditPolicy(mode, product).preferredTariffKey;
+}
+
+function buildTariffRule({ mode, product, usesCredit, tariffKey }) {
+  if (usesCredit && mode === "Data Partner Founding") {
+    return "data_partner_founding_credit_tariff_1_to_1";
   }
-  if (tariffKey === "dataPartnerActive") {
-    return "data_partner_active_preferential_tariff";
+  if (usesCredit && mode === "Data Partner Active") {
+    return "data_partner_active_credit_tariff_1_to_1";
   }
-  if (mode === "Data Partner Contributor" && product !== "basic_report") {
-    return "data_partner_contributor_complete_at_cliente_normal_tariff";
+  if (usesCredit && mode === "Data Partner Contributor" && product === "basic_report") {
+    return "data_partner_contributor_basic_credit_1_to_2";
+  }
+  if (mode.startsWith("Data Partner") && tariffKey === "clienteNormal") {
+    return "cliente_normal_excess_tariff";
   }
   return "cliente_normal_public_tariff";
 }
 
-function normalizeRuleMode(mode) {
-  return mode.toLowerCase().replaceAll(" ", "_");
+function getTariffBucket({ mode, usesCredit, tariffKey }) {
+  if (usesCredit && mode.startsWith("Data Partner")) {
+    return "data_partner_credit";
+  }
+  if (mode.startsWith("Data Partner") && tariffKey === "clienteNormal") {
+    return "excess_cliente_normal";
+  }
+  return "cliente_normal";
 }
 
 function buildQueryEvent({ identifierType, identifier, product, channel, user, ip, tariff }) {
@@ -494,6 +515,8 @@ function buildQueryEvent({ identifierType, identifier, product, channel, user, i
     tariffTier: tariff.tier,
     unitPrice: tariff.unitPrice,
     creditApplied: tariff.creditApplied,
+    creditCost: tariff.creditCost,
+    tariffBucket: tariff.bucket,
     status: "completed",
     createdAt: nowIso()
   };
@@ -509,6 +532,16 @@ function applyQueryUsage(event) {
     state.usage.apiCalls += 1;
   }
   state.usage.estimatedSubtotal = roundMoney(state.usage.estimatedSubtotal + event.estimatedValue);
+  if (event.tariffBucket === "data_partner_credit") {
+    state.usage.dataPartnerCreditQueries += 1;
+    state.usage.dataPartnerCreditSubtotal = roundMoney(state.usage.dataPartnerCreditSubtotal + event.estimatedValue);
+  } else if (event.tariffBucket === "excess_cliente_normal") {
+    state.usage.excessNormalQueries += 1;
+    state.usage.excessNormalSubtotal = roundMoney(state.usage.excessNormalSubtotal + event.estimatedValue);
+  } else {
+    state.usage.clienteNormalQueries += 1;
+    state.usage.clienteNormalSubtotal = roundMoney(state.usage.clienteNormalSubtotal + event.estimatedValue);
+  }
 }
 
 function buildReportResult(event) {
@@ -535,11 +568,23 @@ function buildInvoicePreview() {
     creditsGenerated: state.usage.creditsGenerated,
     creditsUsed: state.usage.creditsUsed,
     creditsBalance: state.client.creditsBalance,
+    breakdown: {
+      dataPartnerCreditQueries: state.usage.dataPartnerCreditQueries,
+      dataPartnerCreditSubtotal: roundMoney(state.usage.dataPartnerCreditSubtotal),
+      excessNormalQueries: state.usage.excessNormalQueries,
+      excessNormalSubtotal: roundMoney(state.usage.excessNormalSubtotal),
+      clienteNormalQueries: state.usage.clienteNormalQueries,
+      clienteNormalSubtotal: roundMoney(state.usage.clienteNormalSubtotal)
+    },
     note: "Simulacion tecnica. Liquidacion final y excepciones comerciales requieren aprobacion de Mateo."
   };
 }
 
 function roundMoney(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function roundCredits(value) {
   return Math.round(value * 100) / 100;
 }
 
