@@ -26,7 +26,7 @@ const sampleInformationRows = [
 const sampleBatchRows = [
   { identifierType: "cedula", identifier: "0923048581", product: "complete_report", channel: "batch" },
   { identifierType: "ruc", identifier: "0999999999001", product: "basic_report", channel: "batch" },
-  { identifierType: "codigo_sb", identifier: "SB-000234", product: "complete_report", channel: "batch" }
+  { identifierType: "codigo_sb", identifier: "SB-000234", product: "inhabilitations_check", channel: "batch" }
 ];
 
 const defaultSubUserModules = ["inicio", "estado", "carga", "consulta-individual", "consulta-bloque", "auditoria"];
@@ -62,6 +62,7 @@ function createState() {
     usage: {
       basicReports: 0,
       completeReports: 0,
+      inhabilitationChecks: 0,
       apiCalls: 0,
       estimatedSubtotal: 0,
       creditsGenerated: 0,
@@ -191,7 +192,7 @@ export function buildTemplate(name) {
       "identifierType,identifier,product,channel,bac,consentReference",
       "cedula,0923048581,complete_report,batch,BAC-DEMO-001,CONS-DEMO-001",
       "ruc,0999999999001,basic_report,batch,BAC-DEMO-002,CONS-DEMO-002",
-      "codigo_sb,SB-000234,complete_report,batch,BAC-DEMO-003,CONS-DEMO-003"
+      "codigo_sb,SB-000234,inhabilitations_check,batch,BAC-DEMO-003,CONS-DEMO-003"
     ].join("\n");
   }
 
@@ -260,7 +261,7 @@ export function ingestInformationBlocks(body = {}) {
 }
 
 export function runIndividualQuery(body = {}) {
-  const product = body.product === "basic_report" ? "basic_report" : "complete_report";
+  const product = normalizeProduct(body.product);
   const channel = body.channel ?? "portal";
   const tariff = calculateTariff(product);
   const event = buildQueryEvent({
@@ -286,12 +287,14 @@ export function runIndividualQuery(body = {}) {
 
 export function runBatchQuery(body = {}) {
   const rows = Array.isArray(body.rows) && body.rows.length > 0 ? body.rows : sampleBatchRows;
+  const selectedProduct = body.product ? normalizeProduct(body.product) : null;
   const events = rows.map((row) => {
-    const tariff = calculateTariff(row.product === "basic_report" ? "basic_report" : "complete_report");
+    const product = selectedProduct ?? normalizeProduct(row.product);
+    const tariff = calculateTariff(product);
     const event = buildQueryEvent({
       identifierType: row.identifierType,
       identifier: row.identifier,
-      product: row.product === "basic_report" ? "basic_report" : "complete_report",
+      product,
       channel: "batch",
       user: body.user ?? "operaciones@megadatos.demo",
       ip: body.ip ?? "127.0.0.1",
@@ -413,7 +416,7 @@ function buildAccessRequest() {
 }
 
 function calculateTariff(product) {
-  const nextMonthlyVolume = state.usage.basicReports + state.usage.completeReports + 1;
+  const nextMonthlyVolume = state.usage.basicReports + state.usage.completeReports + state.usage.inhabilitationChecks + 1;
   const tier = findPricingTier(nextMonthlyVolume);
   const mode = state.client.mode;
   const creditPolicy = getDecisionCreditPolicy(mode, product);
@@ -500,6 +503,10 @@ function getTariffBucket({ mode, usesCredit, tariffKey }) {
 }
 
 function buildQueryEvent({ identifierType, identifier, product, channel, user, ip, tariff }) {
+  const inhabilitations = product === "inhabilitations_check"
+    ? buildInhabilitationsStatus({ identifierType, identifier })
+    : undefined;
+
   return {
     id: `BAC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     bac: `BAC-${Date.now()}`,
@@ -517,6 +524,7 @@ function buildQueryEvent({ identifierType, identifier, product, channel, user, i
     creditApplied: tariff.creditApplied,
     creditCost: tariff.creditCost,
     tariffBucket: tariff.bucket,
+    inhabilitations,
     status: "completed",
     createdAt: nowIso()
   };
@@ -525,8 +533,10 @@ function buildQueryEvent({ identifierType, identifier, product, channel, user, i
 function applyQueryUsage(event) {
   if (event.product === "basic_report") {
     state.usage.basicReports += 1;
-  } else {
+  } else if (event.product === "complete_report") {
     state.usage.completeReports += 1;
+  } else if (event.product === "inhabilitations_check") {
+    state.usage.inhabilitationChecks += 1;
   }
   if (event.channel === "api") {
     state.usage.apiCalls += 1;
@@ -545,6 +555,17 @@ function applyQueryUsage(event) {
 }
 
 function buildReportResult(event) {
+  if (event.product === "inhabilitations_check") {
+    return {
+      identifier: event.identifier,
+      identifierType: event.identifierType,
+      product: event.product,
+      inhabilitations: event.inhabilitations,
+      estimatedValue: event.estimatedValue,
+      auditId: event.id
+    };
+  }
+
   return {
     identifier: event.identifier,
     identifierType: event.identifierType,
@@ -554,6 +575,29 @@ function buildReportResult(event) {
     reportUrl: event.product === "basic_report" ? "/reports/basic/demo" : "/reports/complete/demo",
     estimatedValue: event.estimatedValue,
     auditId: event.id
+  };
+}
+
+function normalizeProduct(product) {
+  const allowed = new Set(["basic_report", "complete_report", "inhabilitations_check"]);
+  return allowed.has(product) ? product : "complete_report";
+}
+
+function buildInhabilitationsStatus({ identifierType, identifier }) {
+  const blockedIdentifiers = new Map([
+    ["cedula:0911111111", "Inhabilitado para girar cheques por sancion vigente simulada."],
+    ["codigo_sb:SB-000234", "Inhabilitado para abrir cuentas corrientes por alerta operativa simulada."]
+  ]);
+  const key = `${identifierType}:${identifier}`;
+  const reason = blockedIdentifiers.get(key);
+
+  return {
+    isInhabilitated: Boolean(reason),
+    status: reason ? "inhabilitado" : "habilitado",
+    checkedCapabilities: ["girar_cheques", "abrir_cuentas_corrientes"],
+    reason: reason ?? "No registra inhabilidades vigentes en el sandbox Decision Data.",
+    source: "decision_data_sandbox_inhabilitations",
+    effectiveDate: "2026-05-26"
   };
 }
 

@@ -120,6 +120,24 @@
       "excessTariff": "cliente_normal"
     }
   },
+  "queryProducts": [
+    {
+      "code": "basic_report",
+      "label": "Reporte basico",
+      "pricingBasis": "queryTariffMatrix"
+    },
+    {
+      "code": "complete_report",
+      "label": "Panorama completo",
+      "pricingBasis": "queryTariffMatrix"
+    },
+    {
+      "code": "inhabilitations_check",
+      "label": "Consulta de inhabilidades",
+      "pricingBasis": "queryTariffMatrix",
+      "scope": "Estado si/no para girar cheques o abrir cuentas corrientes. Tarifa final especifica pendiente de validacion comercial si debe diferir de la matriz vigente."
+    }
+  ],
   "goLiveProcess": [
     {
       "step": "NDA + contrato marco",
