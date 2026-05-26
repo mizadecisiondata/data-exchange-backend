@@ -66,8 +66,7 @@
     ],
     "products": [
       "basic_report",
-      "complete_report",
-      "inhabilitations_check"
+      "complete_report"
     ],
     "channels": [
       "individual",

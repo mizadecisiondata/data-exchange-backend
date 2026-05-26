@@ -49,11 +49,6 @@ const demoCreditQuery3 = runIndividualQuery({ product: "complete_report" });
 const demoCreditQuery4 = runIndividualQuery({ product: "complete_report" });
 const demoExcessQuery = runIndividualQuery({ product: "complete_report" });
 const demoBatch = runBatchQuery();
-const demoInhabilitationsQuery = runIndividualQuery({
-  product: "inhabilitations_check",
-  identifierType: "cedula",
-  identifier: "0911111111"
-});
 const demoSubUser = createDemoSubUser({
   name: "Operador cobranza",
   email: "operador@megadatos.demo",
@@ -84,10 +79,6 @@ if (contract.ingestion.unit !== "information_blocks" || contract.ingestion.quali
 
 if (!contract.queries.auditRequired.includes("bac") || !contract.queries.auditRequired.includes("consent")) {
   throw new Error("Query audit contract must include BAC and consent.");
-}
-
-if (!contract.queries.products.includes("inhabilitations_check")) {
-  throw new Error("Query products must include inhabilitations checks.");
 }
 
 if (!consent.strategicConsentCopy.body.includes("Decision Data")) {
@@ -130,6 +121,10 @@ if (!demoQuery.audit.bac || !demoQuery.audit.consent || demoQuery.audit.status !
   throw new Error("Demo query must register BAC, consent and status.");
 }
 
+if (demoQuery.audit.product !== "complete_report" || demoQuery.result.inhabilitations?.isInhabilitated !== false) {
+  throw new Error("Complete report must include SB inhabilitation status as an indicator, not a separate product.");
+}
+
 if (demoQuery.audit.tariff !== "data_partner_founding_credit_tariff_1_to_1" || demoQuery.audit.estimatedValue !== 0.5 || demoQuery.audit.creditApplied !== true) {
   throw new Error("Founding complete report within credits must use the Founding tariff matrix.");
 }
@@ -146,12 +141,8 @@ if (demoBatch.batch.rowsProcessed !== 3 || demoUsage.invoicePreview.billingMode 
   throw new Error("Demo batch query and usage invoice preview must be functional.");
 }
 
-if (demoInhabilitationsQuery.audit.product !== "inhabilitations_check" || demoInhabilitationsQuery.result.inhabilitations.isInhabilitated !== true) {
-  throw new Error("Inhabilitations query must return a yes/no financial-system status.");
-}
-
-if (demoUsage.usage.inhabilitationChecks < 2) {
-  throw new Error("Usage must count inhabilitations checks across batch and individual/API products.");
+if (demoBatch.batch.completeReportRows !== 2 || demoBatch.batch.sebInhabilitatedRows !== 1) {
+  throw new Error("Batch complete reports must surface SB inhabilitation status inside panorama processing.");
 }
 
 if (!demoSubUser.subUser.allowedModules.includes("consulta-individual") || demoSubUserUpdate.payload.subUser.status !== "blocked") {

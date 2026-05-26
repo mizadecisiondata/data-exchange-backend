@@ -26,7 +26,7 @@ const sampleInformationRows = [
 const sampleBatchRows = [
   { identifierType: "cedula", identifier: "0923048581", product: "complete_report", channel: "batch" },
   { identifierType: "ruc", identifier: "0999999999001", product: "basic_report", channel: "batch" },
-  { identifierType: "codigo_sb", identifier: "SB-000234", product: "inhabilitations_check", channel: "batch" }
+  { identifierType: "codigo_sb", identifier: "SB-000234", product: "complete_report", channel: "batch" }
 ];
 
 const defaultSubUserModules = ["inicio", "estado", "carga", "consulta-individual", "consulta-bloque", "auditoria"];
@@ -62,7 +62,6 @@ function createState() {
     usage: {
       basicReports: 0,
       completeReports: 0,
-      inhabilitationChecks: 0,
       apiCalls: 0,
       estimatedSubtotal: 0,
       creditsGenerated: 0,
@@ -192,7 +191,7 @@ export function buildTemplate(name) {
       "identifierType,identifier,product,channel,bac,consentReference",
       "cedula,0923048581,complete_report,batch,BAC-DEMO-001,CONS-DEMO-001",
       "ruc,0999999999001,basic_report,batch,BAC-DEMO-002,CONS-DEMO-002",
-      "codigo_sb,SB-000234,inhabilitations_check,batch,BAC-DEMO-003,CONS-DEMO-003"
+      "codigo_sb,SB-000234,complete_report,batch,BAC-DEMO-003,CONS-DEMO-003"
     ].join("\n");
   }
 
@@ -309,6 +308,8 @@ export function runBatchQuery(body = {}) {
     status: "processed",
     rowsReceived: rows.length,
     rowsProcessed: events.length,
+    completeReportRows: events.filter((event) => event.product === "complete_report").length,
+    sebInhabilitatedRows: events.filter((event) => event.product === "complete_report" && event.inhabilitations?.isInhabilitated === true).length,
     estimatedSubtotal: roundMoney(events.reduce((sum, event) => sum + event.estimatedValue, 0)),
     createdAt: nowIso()
   };
@@ -416,7 +417,7 @@ function buildAccessRequest() {
 }
 
 function calculateTariff(product) {
-  const nextMonthlyVolume = state.usage.basicReports + state.usage.completeReports + state.usage.inhabilitationChecks + 1;
+  const nextMonthlyVolume = state.usage.basicReports + state.usage.completeReports + 1;
   const tier = findPricingTier(nextMonthlyVolume);
   const mode = state.client.mode;
   const creditPolicy = getDecisionCreditPolicy(mode, product);
@@ -503,7 +504,7 @@ function getTariffBucket({ mode, usesCredit, tariffKey }) {
 }
 
 function buildQueryEvent({ identifierType, identifier, product, channel, user, ip, tariff }) {
-  const inhabilitations = product === "inhabilitations_check"
+  const inhabilitations = product === "complete_report"
     ? buildInhabilitationsStatus({ identifierType, identifier })
     : undefined;
 
@@ -535,8 +536,6 @@ function applyQueryUsage(event) {
     state.usage.basicReports += 1;
   } else if (event.product === "complete_report") {
     state.usage.completeReports += 1;
-  } else if (event.product === "inhabilitations_check") {
-    state.usage.inhabilitationChecks += 1;
   }
   if (event.channel === "api") {
     state.usage.apiCalls += 1;
@@ -555,21 +554,11 @@ function applyQueryUsage(event) {
 }
 
 function buildReportResult(event) {
-  if (event.product === "inhabilitations_check") {
-    return {
-      identifier: event.identifier,
-      identifierType: event.identifierType,
-      product: event.product,
-      inhabilitations: event.inhabilitations,
-      estimatedValue: event.estimatedValue,
-      auditId: event.id
-    };
-  }
-
   return {
     identifier: event.identifier,
     identifierType: event.identifierType,
     product: event.product,
+    inhabilitations: event.inhabilitations,
     score: event.product === "basic_report" ? 812 : 991,
     riskBand: event.product === "basic_report" ? "Bajo" : "Excelente",
     reportUrl: event.product === "basic_report" ? "/reports/basic/demo" : "/reports/complete/demo",
@@ -579,7 +568,7 @@ function buildReportResult(event) {
 }
 
 function normalizeProduct(product) {
-  const allowed = new Set(["basic_report", "complete_report", "inhabilitations_check"]);
+  const allowed = new Set(["basic_report", "complete_report"]);
   return allowed.has(product) ? product : "complete_report";
 }
 
