@@ -15,6 +15,8 @@ import {
 import {
   approveDemoAccessRequest,
   buildTemplate,
+  createAdminClient,
+  createAdminUser,
   createDemoSubUser,
   getDemoState,
   getUsageResponse,
@@ -24,6 +26,8 @@ import {
   resetDemoState,
   runBatchQuery,
   runIndividualQuery,
+  updateAdminSettings,
+  updateAdminUser,
   updateDemoSubUser
 } from "./routes/demo.mjs";
 import { buildHealthResponse, writeJson } from "./routes/health.mjs";
@@ -94,6 +98,29 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname === "/api/v1/demo/state") {
     writeJson(response, 200, getDemoState());
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/admin/clients") {
+    writeJson(response, 201, createAdminClient(await readJsonBody(request)));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/admin/users") {
+    writeJson(response, 201, createAdminUser(await readJsonBody(request)));
+    return;
+  }
+
+  const adminUserMatch = url.pathname.match(/^\/api\/v1\/admin\/users\/([^/]+)$/);
+  if (request.method === "POST" && adminUserMatch) {
+    const result = updateAdminUser(adminUserMatch[1], await readJsonBody(request));
+    writeJson(response, result.statusCode, result.payload);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/admin/settings") {
+    const result = updateAdminSettings(await readJsonBody(request));
+    writeJson(response, result.statusCode, result.payload);
     return;
   }
 

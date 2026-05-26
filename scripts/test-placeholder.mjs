@@ -13,6 +13,8 @@ import {
 } from "../src/routes/auth.mjs";
 import {
   approveDemoAccessRequest,
+  createAdminClient,
+  createAdminUser,
   createDemoSubUser,
   getDemoState,
   getUsageResponse,
@@ -20,6 +22,8 @@ import {
   resetDemoState,
   runBatchQuery,
   runIndividualQuery,
+  updateAdminSettings,
+  updateAdminUser,
   updateDemoSubUser
 } from "../src/routes/demo.mjs";
 import { buildHealthResponse } from "../src/routes/health.mjs";
@@ -49,6 +53,21 @@ const demoCreditQuery3 = runIndividualQuery({ product: "complete_report" });
 const demoCreditQuery4 = runIndividualQuery({ product: "complete_report" });
 const demoExcessQuery = runIndividualQuery({ product: "complete_report" });
 const demoBatch = runBatchQuery();
+const demoAdminClient = createAdminClient({
+  legalName: "CLIENTE FANTASMA S.A.",
+  sector: "Casa comercial",
+  mode: "Cliente Normal",
+  email: "operaciones@cliente-fantasma.demo"
+});
+const demoAdminClientApproval = approveDemoAccessRequest(demoAdminClient.client.requestId, {});
+const demoAdminUser = createAdminUser({
+  name: "Analista soporte",
+  email: "soporte@decisiondata.ec",
+  role: "Soporte",
+  modules: ["dashboard", "clientes", "notificaciones"]
+});
+const demoAdminUserUpdate = updateAdminUser(demoAdminUser.user.id, { active: false });
+const demoSettingsUpdate = updateAdminSettings({ devMonitorExternal: true, sbInhabilitationIncludedInPanorama: true });
 const demoSubUser = createDemoSubUser({
   name: "Operador cobranza",
   email: "operador@megadatos.demo",
@@ -143,6 +162,28 @@ if (demoBatch.batch.rowsProcessed !== 3 || demoUsage.invoicePreview.billingMode 
 
 if (demoBatch.batch.completeReportRows !== 2 || demoBatch.batch.sebInhabilitatedRows !== 1) {
   throw new Error("Batch complete reports must surface SB inhabilitation status inside panorama processing.");
+}
+
+const adminState = getDemoState();
+
+if (adminState.adminClients.length < 3 || demoAdminClientApproval.payload.productionAccess !== true) {
+  throw new Error("Admin must be able to create a phantom client and approve its onboarding request.");
+}
+
+if (!adminState.globalUsage || !Array.isArray(adminState.globalUsage.series) || adminState.globalUsage.series.length === 0) {
+  throw new Error("Admin dashboard must expose global usage series.");
+}
+
+if (adminState.ingestionDashboard.acceptedRows < 4 || adminState.auditLog.length === 0 || adminState.notifications.length === 0) {
+  throw new Error("Admin ingestion, audit and notification dashboards must reflect client activity.");
+}
+
+if (demoAdminUserUpdate.payload.user.status !== "blocked") {
+  throw new Error("Admin users module must support user status updates.");
+}
+
+if (demoSettingsUpdate.payload.settings.devMonitorExternal !== true) {
+  throw new Error("Admin settings must support operational updates.");
 }
 
 if (!demoSubUser.subUser.allowedModules.includes("consulta-individual") || demoSubUserUpdate.payload.subUser.status !== "blocked") {

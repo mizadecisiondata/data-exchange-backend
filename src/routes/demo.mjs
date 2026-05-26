@@ -30,6 +30,35 @@ const sampleBatchRows = [
 ];
 
 const defaultSubUserModules = ["inicio", "estado", "carga", "consulta-individual", "consulta-bloque", "auditoria"];
+const defaultAdminUsers = [
+  {
+    id: "admin_user_operaciones",
+    name: "Operaciones Decision Data",
+    email: "admin@decisiondata.ec",
+    role: "Super admin",
+    status: "active",
+    modules: ["dashboard", "onboarding", "clientes", "usuarios", "ingesta", "consumos", "facturacion", "auditoria", "notificaciones", "configuracion"],
+    createdAt: "2026-05-23T08:00:00.000Z"
+  },
+  {
+    id: "admin_user_onboarding",
+    name: "Analista onboarding",
+    email: "onboarding@decisiondata.ec",
+    role: "Onboarding",
+    status: "active",
+    modules: ["onboarding", "clientes", "notificaciones"],
+    createdAt: "2026-05-23T08:05:00.000Z"
+  }
+];
+
+const defaultSettings = {
+  qualityThreshold: 0.95,
+  billingMode: "monthly_postpaid",
+  allowPricingAutomation: false,
+  emailProvider: "simulated_outbox",
+  devMonitorExternal: true,
+  sbInhabilitationIncludedInPanorama: true
+};
 
 function createState() {
   return {
@@ -47,6 +76,47 @@ function createState() {
     uploads: [],
     queries: [],
     batchQueries: [],
+    phantomClients: [
+      {
+        id: "client_retail_demo",
+        requestId: "REQ-2026-RETAIL-DEMO",
+        legalName: "RETAIL DEMO S.A.",
+        sector: "Retail",
+        mode: "Data Partner Active",
+        state: "pending_documents",
+        productionAccess: false,
+        sandboxUploadAllowed: true,
+        creditsBalance: 0,
+        documents: {
+          nda: true,
+          "master-agreement": false,
+          "technical-annex": false,
+          ruc: true,
+          "legal-appointment": false,
+          "legal-id": false,
+          "data-source": false,
+          contacts: true
+        },
+        uploads: [],
+        queries: [],
+        batchQueries: [],
+        usage: createUsageSummary(),
+        outbox: [
+          {
+            id: "email_retail_pending",
+            type: "registration_received",
+            to: "operaciones@retail.demo",
+            subject: "Solicitud recibida - Decision Data",
+            status: "simulated_not_sent",
+            createdAt: "2026-05-24T09:00:00.000Z"
+          }
+        ],
+        createdAt: "2026-05-24T09:00:00.000Z"
+      }
+    ],
+    adminUsers: defaultAdminUsers.map((user) => ({ ...user, modules: [...user.modules] })),
+    settings: { ...defaultSettings },
+    adminAudit: [],
     subUsers: [
       {
         id: "subuser_analista_demo",
@@ -59,20 +129,7 @@ function createState() {
         createdAt: "2026-05-23T08:10:00.000Z"
       }
     ],
-    usage: {
-      basicReports: 0,
-      completeReports: 0,
-      apiCalls: 0,
-      estimatedSubtotal: 0,
-      creditsGenerated: 0,
-      creditsUsed: 0,
-      dataPartnerCreditQueries: 0,
-      dataPartnerCreditSubtotal: 0,
-      excessNormalQueries: 0,
-      excessNormalSubtotal: 0,
-      clienteNormalQueries: 0,
-      clienteNormalSubtotal: 0
-    },
+    usage: createUsageSummary(),
     outbox: [
       {
         id: "email_welcome_pending",
@@ -106,28 +163,64 @@ export function getDemoState() {
     usage: { ...state.usage },
     outbox: state.outbox.map((item) => ({ ...item })),
     accessRequest: buildAccessRequest(),
-    invoicePreview: buildInvoicePreview()
+    invoicePreview: buildInvoicePreview(),
+    adminClients: buildAdminClients(),
+    adminUsers: state.adminUsers.map((item) => ({ ...item, modules: [...item.modules] })),
+    globalUsage: buildGlobalUsage(),
+    ingestionDashboard: buildIngestionDashboard(),
+    auditLog: buildAuditLog(),
+    notifications: buildNotifications(),
+    settings: { ...state.settings }
   };
 }
 
 export function listDemoAccessRequests() {
   return {
     status: "ok",
-    requests: [buildAccessRequest()]
+    requests: buildAdminClients().map((client) => ({
+      id: client.requestId,
+      legalName: client.legalName,
+      sector: client.sector,
+      mode: client.mode,
+      state: client.state,
+      productionAccess: client.productionAccess,
+      sandboxUploadAllowed: client.sandboxUploadAllowed,
+      blockingDocumentsMissing: client.blockingDocumentsMissing
+    }))
   };
 }
 
 export function observeDemoAccessRequest(id, body) {
+  const target = findClientByRequestId(id);
+  if (!target) {
+    return {
+      status: "not_found",
+      requestId: id,
+      observation: "Solicitud no encontrada.",
+      notifyClient: false,
+      emailSending: "not_sent"
+    };
+  }
+
   const event = {
     id: `email_observation_${Date.now()}`,
     type: "document_observation",
-    to: "operaciones@megadatos.demo",
+    to: getClientEmail(target),
     subject: "Observacion documental - Decision Data",
     status: "simulated_not_sent",
     body: body.observation ?? "Documentos habilitantes pendientes.",
     createdAt: nowIso()
   };
-  state.outbox.unshift(event);
+  pushClientOutbox(target, event);
+  pushAdminAudit({
+    type: "admin_onboarding_observation",
+    actor: body.actor ?? "admin@decisiondata.ec",
+    clientId: target.client.id,
+    clientName: target.client.legalName,
+    detail: event.body,
+    channel: "admin",
+    status: "registered"
+  });
 
   return {
     status: "observation_registered",
@@ -154,18 +247,39 @@ export function approveDemoAccessRequest(id, body) {
     };
   }
 
-  state.documents = Object.fromEntries(Object.keys(state.documents).map((key) => [key, true]));
-  state.client.state = "approved";
-  state.client.productionAccess = true;
-  state.client.sandboxUploadAllowed = true;
-  state.outbox.unshift({
+  const target = findClientByRequestId(id);
+  if (!target) {
+    return {
+      statusCode: 404,
+      payload: {
+        status: "not_found",
+        requestId: id
+      }
+    };
+  }
+
+  setClientDocuments(target, Object.fromEntries(Object.keys(target.documents).map((key) => [key, true])));
+  target.client.state = "approved";
+  target.client.productionAccess = true;
+  target.client.sandboxUploadAllowed = true;
+  const email = {
     id: `email_temp_credentials_${Date.now()}`,
     type: "temporary_credentials",
-    to: "operaciones@megadatos.demo",
+    to: getClientEmail(target),
     subject: "Acceso aprobado - credenciales temporales Decision Data",
     status: "simulated_not_sent",
-    body: "Usuario temporal generado en sandbox. En produccion se enviara por proveedor transaccional.",
+    body: `Usuario temporal generado para ${target.client.legalName}. En produccion se enviara por proveedor transaccional.`,
     createdAt: nowIso()
+  };
+  pushClientOutbox(target, email);
+  pushAdminAudit({
+    type: "admin_access_approval",
+    actor: body.actor ?? "admin@decisiondata.ec",
+    clientId: target.client.id,
+    clientName: target.client.legalName,
+    detail: "Acceso productivo sandbox aprobado y credenciales temporales generadas.",
+    channel: "admin",
+    status: "approved"
   });
 
   return {
@@ -249,6 +363,15 @@ export function ingestInformationBlocks(body = {}) {
   state.uploads.unshift(upload);
   state.client.creditsBalance += creditsGenerated;
   state.usage.creditsGenerated += creditsGenerated;
+  pushAdminAudit({
+    type: "client_information_block_upload",
+    actor: body.user ?? "operaciones@megadatos.demo",
+    clientId: state.client.id,
+    clientName: state.client.legalName,
+    detail: `${accepted.length} registros aceptados, ${duplicates.length} duplicados, calidad ${Math.round(qualityScore * 100)}%.`,
+    channel: state.client.productionAccess ? "portal" : "non_productive_portal",
+    status
+  });
 
   return {
     status: "ok",
@@ -275,6 +398,15 @@ export function runIndividualQuery(body = {}) {
 
   applyQueryUsage(event);
   state.queries.unshift(event);
+  pushAdminAudit({
+    type: "client_query",
+    actor: event.user,
+    clientId: state.client.id,
+    clientName: state.client.legalName,
+    detail: `${event.product} ${event.identifierType}:${event.identifier} ${event.tariff} $${event.estimatedValue.toFixed(2)}`,
+    channel: event.channel,
+    status: event.status
+  });
 
   return {
     status: "ok",
@@ -316,6 +448,15 @@ export function runBatchQuery(body = {}) {
 
   state.batchQueries.unshift(batch);
   state.queries.unshift(...events);
+  pushAdminAudit({
+    type: "client_batch_query",
+    actor: body.user ?? "operaciones@megadatos.demo",
+    clientId: state.client.id,
+    clientName: state.client.legalName,
+    detail: `${events.length} filas procesadas, ${batch.sebInhabilitatedRows} inhabilitadas SB, subtotal $${batch.estimatedSubtotal.toFixed(2)}.`,
+    channel: "batch",
+    status: "processed"
+  });
 
   return {
     status: "ok",
@@ -334,6 +475,178 @@ export function getUsageResponse() {
     invoicePreview: buildInvoicePreview(),
     outbox: state.outbox,
     queries: state.queries.slice(0, 10)
+  };
+}
+
+export function createAdminClient(body = {}) {
+  const index = state.phantomClients.length + 2;
+  const legalName = body.legalName ?? `CLIENTE FANTASMA ${index} S.A.`;
+  const id = `client_${slugify(legalName)}_${Date.now()}`;
+  const requestId = `REQ-2026-${slugify(legalName).toUpperCase().slice(0, 18)}-${Date.now().toString().slice(-4)}`;
+  const client = {
+    id,
+    requestId,
+    legalName,
+    sector: body.sector ?? "Casa comercial",
+    mode: body.mode ?? "Cliente Normal",
+    state: "pending_documents",
+    productionAccess: false,
+    sandboxUploadAllowed: true,
+    creditsBalance: 0,
+    documents: {
+      nda: false,
+      "master-agreement": false,
+      "technical-annex": false,
+      ruc: true,
+      "legal-appointment": false,
+      "legal-id": false,
+      "data-source": false,
+      contacts: true
+    },
+    uploads: [],
+    queries: [],
+    batchQueries: [],
+    usage: createUsageSummary(),
+    outbox: [
+      {
+        id: `email_${id}_received`,
+        type: "registration_received",
+        to: body.email ?? `operaciones@${slugify(legalName)}.demo`,
+        subject: "Solicitud recibida - Decision Data",
+        status: "simulated_not_sent",
+        createdAt: nowIso()
+      }
+    ],
+    createdAt: nowIso()
+  };
+
+  state.phantomClients.unshift(client);
+  pushAdminAudit({
+    type: "admin_client_created",
+    actor: body.actor ?? "admin@decisiondata.ec",
+    clientId: client.id,
+    clientName: client.legalName,
+    detail: "Cliente fantasma creado para probar el flujo end-to-end.",
+    channel: "admin",
+    status: "created"
+  });
+
+  return {
+    status: "client_created",
+    client: buildClientRecord({ client, documents: client.documents, uploads: client.uploads, queries: client.queries, batchQueries: client.batchQueries, usage: client.usage, outbox: client.outbox }),
+    state: getDemoState()
+  };
+}
+
+export function createAdminUser(body = {}) {
+  const user = {
+    id: `admin_user_${Date.now()}`,
+    name: body.name ?? "Nuevo usuario admin",
+    email: body.email ?? `admin.${state.adminUsers.length + 1}@decisiondata.ec`,
+    role: body.role ?? "Soporte",
+    status: "active",
+    modules: normalizeAdminModules(body.modules),
+    createdAt: nowIso()
+  };
+
+  state.adminUsers.unshift(user);
+  pushAdminAudit({
+    type: "admin_user_created",
+    actor: body.actor ?? "admin@decisiondata.ec",
+    clientId: "decision_data",
+    clientName: "Decision Data",
+    detail: `Usuario admin creado: ${user.email}`,
+    channel: "admin",
+    status: "created"
+  });
+
+  return {
+    status: "admin_user_created",
+    user: { ...user, modules: [...user.modules] },
+    state: getDemoState()
+  };
+}
+
+export function updateAdminUser(id, body = {}) {
+  const user = state.adminUsers.find((item) => item.id === id);
+  if (!user) {
+    return {
+      statusCode: 404,
+      payload: {
+        status: "not_found",
+        userId: id
+      }
+    };
+  }
+
+  if (body.role) {
+    user.role = body.role;
+  }
+  if (Array.isArray(body.modules)) {
+    user.modules = normalizeAdminModules(body.modules);
+  }
+  if (typeof body.active === "boolean") {
+    user.status = body.active ? "active" : "blocked";
+  }
+
+  pushAdminAudit({
+    type: "admin_user_updated",
+    actor: body.actor ?? "admin@decisiondata.ec",
+    clientId: "decision_data",
+    clientName: "Decision Data",
+    detail: `Usuario admin actualizado: ${user.email}`,
+    channel: "admin",
+    status: "updated"
+  });
+
+  return {
+    statusCode: 200,
+    payload: {
+      status: "admin_user_updated",
+      user: { ...user, modules: [...user.modules] },
+      state: getDemoState()
+    }
+  };
+}
+
+export function updateAdminSettings(body = {}) {
+  const blockedKeys = ["billingMode", "qualityThreshold"];
+  const requestedBlocked = Object.keys(body).filter((key) => blockedKeys.includes(key));
+  if (requestedBlocked.length > 0) {
+    return {
+      statusCode: 409,
+      payload: {
+        status: "settings_blocked",
+        reason: "pricing_or_regulatory_setting_requires_mateo",
+        blockedKeys: requestedBlocked
+      }
+    };
+  }
+
+  state.settings = {
+    ...state.settings,
+    allowPricingAutomation: Boolean(body.allowPricingAutomation ?? state.settings.allowPricingAutomation),
+    emailProvider: body.emailProvider ?? state.settings.emailProvider,
+    devMonitorExternal: Boolean(body.devMonitorExternal ?? state.settings.devMonitorExternal),
+    sbInhabilitationIncludedInPanorama: Boolean(body.sbInhabilitationIncludedInPanorama ?? state.settings.sbInhabilitationIncludedInPanorama)
+  };
+  pushAdminAudit({
+    type: "admin_settings_updated",
+    actor: body.actor ?? "admin@decisiondata.ec",
+    clientId: "decision_data",
+    clientName: "Decision Data",
+    detail: "Configuracion operativa actualizada en sandbox.",
+    channel: "admin",
+    status: "updated"
+  });
+
+  return {
+    statusCode: 200,
+    payload: {
+      status: "settings_updated",
+      settings: { ...state.settings },
+      state: getDemoState()
+    }
   };
 }
 
@@ -414,6 +727,265 @@ function buildAccessRequest() {
     sandboxUploadAllowed: state.client.sandboxUploadAllowed,
     blockingDocumentsMissing: missing
   };
+}
+
+function createUsageSummary() {
+  return {
+    basicReports: 0,
+    completeReports: 0,
+    apiCalls: 0,
+    estimatedSubtotal: 0,
+    creditsGenerated: 0,
+    creditsUsed: 0,
+    dataPartnerCreditQueries: 0,
+    dataPartnerCreditSubtotal: 0,
+    excessNormalQueries: 0,
+    excessNormalSubtotal: 0,
+    clienteNormalQueries: 0,
+    clienteNormalSubtotal: 0
+  };
+}
+
+function buildAdminClients() {
+  const primary = buildClientRecord({
+    client: state.client,
+    requestId: "REQ-2026-MEGADATOS-DEMO",
+    documents: state.documents,
+    uploads: state.uploads,
+    queries: state.queries,
+    batchQueries: state.batchQueries,
+    usage: state.usage,
+    outbox: state.outbox,
+    createdAt: "2026-05-23T08:00:00.000Z"
+  });
+
+  return [
+    primary,
+    ...state.phantomClients.map((client) => buildClientRecord({
+      client,
+      requestId: client.requestId,
+      documents: client.documents,
+      uploads: client.uploads,
+      queries: client.queries,
+      batchQueries: client.batchQueries,
+      usage: client.usage,
+      outbox: client.outbox,
+      createdAt: client.createdAt
+    }))
+  ];
+}
+
+function buildClientRecord({ client, requestId, documents, uploads, queries, batchQueries, usage, outbox, createdAt }) {
+  const missing = Object.entries(documents)
+    .filter(([, value]) => value !== true)
+    .map(([key]) => key);
+  const latestUpload = uploads[0];
+  const latestQuery = queries[0];
+
+  return {
+    id: client.id,
+    requestId: requestId ?? client.requestId,
+    legalName: client.legalName,
+    sector: client.sector,
+    mode: client.mode,
+    state: client.state,
+    productionAccess: client.productionAccess,
+    sandboxUploadAllowed: client.sandboxUploadAllowed,
+    creditsBalance: client.creditsBalance,
+    blockingDocumentsMissing: missing,
+    documents: { ...documents },
+    uploads: uploads.map((item) => ({ ...item })),
+    queries: queries.map((item) => ({ ...item })),
+    batchQueries: batchQueries.map((item) => ({ ...item })),
+    usage: { ...usage },
+    outbox: outbox.map((item) => ({ ...item })),
+    createdAt,
+    latestUploadAt: latestUpload?.createdAt ?? null,
+    latestQueryAt: latestQuery?.createdAt ?? null,
+    statusLabel: client.productionAccess ? "Aprobado" : missing.length > 0 ? "Revision documental" : "Listo para aprobar"
+  };
+}
+
+function buildGlobalUsage() {
+  const clients = buildAdminClients();
+  const totals = clients.reduce((acc, client) => ({
+    basicReports: acc.basicReports + client.usage.basicReports,
+    completeReports: acc.completeReports + client.usage.completeReports,
+    apiCalls: acc.apiCalls + client.usage.apiCalls,
+    estimatedSubtotal: roundMoney(acc.estimatedSubtotal + client.usage.estimatedSubtotal),
+    creditsGenerated: acc.creditsGenerated + client.usage.creditsGenerated,
+    creditsUsed: roundCredits(acc.creditsUsed + client.usage.creditsUsed),
+    productiveClients: acc.productiveClients + (client.productionAccess ? 1 : 0),
+    pendingClients: acc.pendingClients + (client.productionAccess ? 0 : 1)
+  }), {
+    basicReports: 0,
+    completeReports: 0,
+    apiCalls: 0,
+    estimatedSubtotal: 0,
+    creditsGenerated: 0,
+    creditsUsed: 0,
+    productiveClients: 0,
+    pendingClients: 0
+  });
+  const currentQueries = totals.basicReports + totals.completeReports;
+
+  return {
+    ...totals,
+    totalQueries: currentQueries,
+    series: [
+      { label: "Ene", queries: 44, amount: 34 },
+      { label: "Feb", queries: 58, amount: 43 },
+      { label: "Mar", queries: 69, amount: 51 },
+      { label: "Abr", queries: 62, amount: 47 },
+      { label: "May", queries: Math.max(currentQueries, 1), amount: Math.max(totals.estimatedSubtotal, 1) }
+    ],
+    productMix: [
+      { label: "Basicos", count: totals.basicReports },
+      { label: "Panorama", count: totals.completeReports },
+      { label: "API", count: totals.apiCalls }
+    ],
+    byClient: clients.map((client) => ({
+      clientId: client.id,
+      legalName: client.legalName,
+      queries: client.usage.basicReports + client.usage.completeReports,
+      uploads: client.uploads.length,
+      subtotal: client.usage.estimatedSubtotal,
+      state: client.state
+    }))
+  };
+}
+
+function buildIngestionDashboard() {
+  const clients = buildAdminClients();
+  const uploads = clients.flatMap((client) => client.uploads.map((upload) => ({
+    ...upload,
+    clientId: client.id,
+    clientName: client.legalName
+  })));
+  const acceptedRows = uploads.reduce((sum, upload) => sum + upload.acceptedRows, 0);
+  const duplicateRows = uploads.reduce((sum, upload) => sum + upload.duplicateRows, 0);
+  const errorRows = uploads.reduce((sum, upload) => sum + upload.errorRows, 0);
+
+  return {
+    uploads,
+    acceptedRows,
+    duplicateRows,
+    errorRows,
+    qualityThreshold: state.settings.qualityThreshold,
+    byClient: clients.map((client) => ({
+      clientId: client.id,
+      legalName: client.legalName,
+      uploads: client.uploads.length,
+      acceptedRows: client.uploads.reduce((sum, upload) => sum + upload.acceptedRows, 0),
+      creditsGenerated: client.uploads.reduce((sum, upload) => sum + upload.creditsGenerated, 0)
+    }))
+  };
+}
+
+function buildAuditLog() {
+  const queryAudits = buildAdminClients().flatMap((client) => client.queries.map((query) => ({
+    id: query.id,
+    type: "query_bac",
+    actor: query.user,
+    clientId: client.id,
+    clientName: client.legalName,
+    channel: query.channel,
+    product: query.product,
+    tariff: query.tariff,
+    estimatedValue: query.estimatedValue,
+    status: query.status,
+    detail: `${query.identifierType}:${query.identifier}`,
+    createdAt: query.createdAt
+  })));
+
+  return [...state.adminAudit, ...queryAudits]
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(0, 60);
+}
+
+function buildNotifications() {
+  return buildAdminClients()
+    .flatMap((client) => client.outbox.map((email) => ({
+      ...email,
+      clientId: client.id,
+      clientName: client.legalName
+    })))
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+function findClientByRequestId(requestId) {
+  if (requestId === "REQ-2026-MEGADATOS-DEMO") {
+    return {
+      client: state.client,
+      documents: state.documents,
+      uploads: state.uploads,
+      queries: state.queries,
+      batchQueries: state.batchQueries,
+      usage: state.usage,
+      outbox: state.outbox
+    };
+  }
+
+  const client = state.phantomClients.find((item) => item.requestId === requestId);
+  if (!client) {
+    return null;
+  }
+  return {
+    client,
+    documents: client.documents,
+    uploads: client.uploads,
+    queries: client.queries,
+    batchQueries: client.batchQueries,
+    usage: client.usage,
+    outbox: client.outbox
+  };
+}
+
+function setClientDocuments(target, documents) {
+  if (target.client.id === state.client.id) {
+    state.documents = documents;
+    target.documents = state.documents;
+    return;
+  }
+  target.client.documents = documents;
+  target.documents = target.client.documents;
+}
+
+function pushClientOutbox(target, email) {
+  if (target.client.id === state.client.id) {
+    state.outbox.unshift(email);
+    return;
+  }
+  target.client.outbox.unshift(email);
+}
+
+function getClientEmail(target) {
+  const latest = target.outbox.find((item) => item.to);
+  return latest?.to ?? `operaciones@${slugify(target.client.legalName)}.demo`;
+}
+
+function pushAdminAudit(event) {
+  state.adminAudit.unshift({
+    id: `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    createdAt: nowIso(),
+    ...event
+  });
+  state.adminAudit = state.adminAudit.slice(0, 80);
+}
+
+function normalizeAdminModules(modules) {
+  const allowed = new Set(["dashboard", "onboarding", "clientes", "usuarios", "ingesta", "consumos", "facturacion", "auditoria", "notificaciones", "configuracion"]);
+  const source = Array.isArray(modules) && modules.length > 0 ? modules : ["dashboard", "onboarding", "clientes"];
+  return [...new Set(source.filter((moduleId) => allowed.has(moduleId)))];
+}
+
+function slugify(value) {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "cliente_demo";
 }
 
 function calculateTariff(product) {
