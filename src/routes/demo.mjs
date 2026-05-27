@@ -100,6 +100,7 @@ function createState() {
         uploads: [],
         queries: [],
         batchQueries: [],
+        subUsers: [],
         usage: createUsageSummary(),
         outbox: [
           {
@@ -319,6 +320,7 @@ export function buildTemplate(name) {
 }
 
 export function ingestInformationBlocks(body = {}) {
+  const target = findClientById(body.clientId) ?? getPrimaryClientTarget();
   const rows = Array.isArray(body.rows) && body.rows.length > 0 ? body.rows : sampleInformationRows;
   const seen = new Set();
   const duplicates = [];
@@ -348,7 +350,9 @@ export function ingestInformationBlocks(body = {}) {
   const upload = {
     id: `UPL-${Date.now()}`,
     status,
-    mode: state.client.productionAccess ? "productive_sandbox" : "non_productive_sandbox",
+    mode: target.client.productionAccess ? "productive_sandbox" : "non_productive_sandbox",
+    clientId: target.client.id,
+    clientName: target.client.legalName,
     rowsReceived: rows.length,
     acceptedRows: accepted.length,
     duplicateRows: duplicates.length,
@@ -360,16 +364,16 @@ export function ingestInformationBlocks(body = {}) {
     createdAt: nowIso()
   };
 
-  state.uploads.unshift(upload);
-  state.client.creditsBalance += creditsGenerated;
-  state.usage.creditsGenerated += creditsGenerated;
+  target.uploads.unshift(upload);
+  target.client.creditsBalance += creditsGenerated;
+  target.usage.creditsGenerated += creditsGenerated;
   pushAdminAudit({
     type: "client_information_block_upload",
     actor: body.user ?? "operaciones@megadatos.demo",
-    clientId: state.client.id,
-    clientName: state.client.legalName,
+    clientId: target.client.id,
+    clientName: target.client.legalName,
     detail: `${accepted.length} registros aceptados, ${duplicates.length} duplicados, calidad ${Math.round(qualityScore * 100)}%.`,
-    channel: state.client.productionAccess ? "portal" : "non_productive_portal",
+    channel: target.client.productionAccess ? "portal" : "non_productive_portal",
     status
   });
 
@@ -383,26 +387,27 @@ export function ingestInformationBlocks(body = {}) {
 }
 
 export function runIndividualQuery(body = {}) {
+  const target = findClientById(body.clientId) ?? getPrimaryClientTarget();
   const product = normalizeProduct(body.product);
   const channel = body.channel ?? "portal";
-  const tariff = calculateTariff(product);
+  const tariff = calculateTariff(product, target);
   const event = buildQueryEvent({
     identifierType: body.identifierType ?? "cedula",
     identifier: body.identifier ?? "0923048581",
     product,
     channel,
-    user: body.user ?? "operaciones@megadatos.demo",
+    user: body.user ?? getClientEmail(target),
     ip: body.ip ?? "127.0.0.1",
     tariff
   });
 
-  applyQueryUsage(event);
-  state.queries.unshift(event);
+  applyQueryUsage(event, target);
+  target.queries.unshift(event);
   pushAdminAudit({
     type: "client_query",
     actor: event.user,
-    clientId: state.client.id,
-    clientName: state.client.legalName,
+    clientId: target.client.id,
+    clientName: target.client.legalName,
     detail: `${event.product} ${event.identifierType}:${event.identifier} ${event.tariff} $${event.estimatedValue.toFixed(2)}`,
     channel: event.channel,
     status: event.status
@@ -417,21 +422,22 @@ export function runIndividualQuery(body = {}) {
 }
 
 export function runBatchQuery(body = {}) {
+  const target = findClientById(body.clientId) ?? getPrimaryClientTarget();
   const rows = Array.isArray(body.rows) && body.rows.length > 0 ? body.rows : sampleBatchRows;
   const selectedProduct = body.product ? normalizeProduct(body.product) : null;
   const events = rows.map((row) => {
     const product = selectedProduct ?? normalizeProduct(row.product);
-    const tariff = calculateTariff(product);
+    const tariff = calculateTariff(product, target);
     const event = buildQueryEvent({
       identifierType: row.identifierType,
       identifier: row.identifier,
       product,
       channel: "batch",
-      user: body.user ?? "operaciones@megadatos.demo",
+      user: body.user ?? getClientEmail(target),
       ip: body.ip ?? "127.0.0.1",
       tariff
     });
-    applyQueryUsage(event);
+    applyQueryUsage(event, target);
     return event;
   });
 
@@ -446,13 +452,13 @@ export function runBatchQuery(body = {}) {
     createdAt: nowIso()
   };
 
-  state.batchQueries.unshift(batch);
-  state.queries.unshift(...events);
+  target.batchQueries.unshift(batch);
+  target.queries.unshift(...events);
   pushAdminAudit({
     type: "client_batch_query",
     actor: body.user ?? "operaciones@megadatos.demo",
-    clientId: state.client.id,
-    clientName: state.client.legalName,
+    clientId: target.client.id,
+    clientName: target.client.legalName,
     detail: `${events.length} filas procesadas, ${batch.sebInhabilitatedRows} inhabilitadas SB, subtotal $${batch.estimatedSubtotal.toFixed(2)}.`,
     channel: "batch",
     status: "processed"
@@ -506,6 +512,7 @@ export function createAdminClient(body = {}) {
     uploads: [],
     queries: [],
     batchQueries: [],
+    subUsers: [],
     usage: createUsageSummary(),
     outbox: [
       {
@@ -651,10 +658,11 @@ export function updateAdminSettings(body = {}) {
 }
 
 export function createDemoSubUser(body = {}) {
+  const target = findClientById(body.clientId) ?? getPrimaryClientTarget();
   const subUser = {
     id: `subuser_${Date.now()}`,
     name: body.name ?? "Nuevo subusuario",
-    email: body.email ?? `subusuario.${state.subUsers.length + 1}@megadatos.demo`,
+    email: body.email ?? `subusuario.${target.subUsers.length + 1}@${slugify(target.client.legalName)}.demo`,
     role: body.role ?? "Operador cliente",
     status: "active",
     allowedModules: normalizeModules(body.allowedModules),
@@ -662,8 +670,8 @@ export function createDemoSubUser(body = {}) {
     createdAt: nowIso()
   };
 
-  state.subUsers.unshift(subUser);
-  state.outbox.unshift({
+  target.subUsers.unshift(subUser);
+  pushClientOutbox(target, {
     id: `email_subuser_${Date.now()}`,
     type: "subuser_temporary_credentials",
     to: subUser.email,
@@ -681,7 +689,8 @@ export function createDemoSubUser(body = {}) {
 }
 
 export function updateDemoSubUser(id, body = {}) {
-  const subUser = state.subUsers.find((item) => item.id === id);
+  const target = findClientById(body.clientId) ?? getPrimaryClientTarget();
+  const subUser = target.subUsers.find((item) => item.id === id);
   if (!subUser) {
     return {
       statusCode: 404,
@@ -798,7 +807,9 @@ function buildClientRecord({ client, requestId, documents, uploads, queries, bat
     queries: queries.map((item) => ({ ...item })),
     batchQueries: batchQueries.map((item) => ({ ...item })),
     usage: { ...usage },
+    subUsers: (client.subUsers ?? state.subUsers ?? []).map((item) => ({ ...item, allowedModules: [...(item.allowedModules ?? [])] })),
     outbox: outbox.map((item) => ({ ...item })),
+    invoicePreview: buildInvoicePreviewFor(usage, client.creditsBalance),
     createdAt,
     latestUploadAt: latestUpload?.createdAt ?? null,
     latestQueryAt: latestQuery?.createdAt ?? null,
@@ -915,15 +926,7 @@ function buildNotifications() {
 
 function findClientByRequestId(requestId) {
   if (requestId === "REQ-2026-MEGADATOS-DEMO") {
-    return {
-      client: state.client,
-      documents: state.documents,
-      uploads: state.uploads,
-      queries: state.queries,
-      batchQueries: state.batchQueries,
-      usage: state.usage,
-      outbox: state.outbox
-    };
+    return getPrimaryClientTarget();
   }
 
   const client = state.phantomClients.find((item) => item.requestId === requestId);
@@ -936,8 +939,42 @@ function findClientByRequestId(requestId) {
     uploads: client.uploads,
     queries: client.queries,
     batchQueries: client.batchQueries,
+    subUsers: client.subUsers,
     usage: client.usage,
     outbox: client.outbox
+  };
+}
+
+function findClientById(clientId) {
+  if (!clientId || clientId === state.client.id) {
+    return getPrimaryClientTarget();
+  }
+  const client = state.phantomClients.find((item) => item.id === clientId);
+  if (!client) {
+    return null;
+  }
+  return {
+    client,
+    documents: client.documents,
+    uploads: client.uploads,
+    queries: client.queries,
+    batchQueries: client.batchQueries,
+    subUsers: client.subUsers,
+    usage: client.usage,
+    outbox: client.outbox
+  };
+}
+
+function getPrimaryClientTarget() {
+  return {
+    client: state.client,
+    documents: state.documents,
+    uploads: state.uploads,
+    queries: state.queries,
+    batchQueries: state.batchQueries,
+    subUsers: state.subUsers,
+    usage: state.usage,
+    outbox: state.outbox
   };
 }
 
@@ -988,20 +1025,20 @@ function slugify(value) {
     .replace(/^_+|_+$/g, "") || "cliente_demo";
 }
 
-function calculateTariff(product) {
-  const nextMonthlyVolume = state.usage.basicReports + state.usage.completeReports + 1;
+function calculateTariff(product, target = getPrimaryClientTarget()) {
+  const nextMonthlyVolume = target.usage.basicReports + target.usage.completeReports + 1;
   const tier = findPricingTier(nextMonthlyVolume);
-  const mode = state.client.mode;
+  const mode = target.client.mode;
   const creditPolicy = getDecisionCreditPolicy(mode, product);
-  const hasCredit = state.client.creditsBalance >= creditPolicy.creditCost && creditPolicy.creditCost > 0;
+  const hasCredit = target.client.creditsBalance >= creditPolicy.creditCost && creditPolicy.creditCost > 0;
   const tariffKey = hasCredit ? creditPolicy.preferredTariffKey : getExcessTariffKey(mode, product);
   const matrixValue = tier[tariffKey];
   const usesCredit = hasCredit;
   const estimatedValue = matrixValue;
 
   if (usesCredit) {
-    state.client.creditsBalance = roundCredits(state.client.creditsBalance - creditPolicy.creditCost);
-    state.usage.creditsUsed = roundCredits(state.usage.creditsUsed + creditPolicy.creditCost);
+    target.client.creditsBalance = roundCredits(target.client.creditsBalance - creditPolicy.creditCost);
+    target.usage.creditsUsed = roundCredits(target.usage.creditsUsed + creditPolicy.creditCost);
   }
 
   return {
@@ -1103,25 +1140,25 @@ function buildQueryEvent({ identifierType, identifier, product, channel, user, i
   };
 }
 
-function applyQueryUsage(event) {
+function applyQueryUsage(event, target = getPrimaryClientTarget()) {
   if (event.product === "basic_report") {
-    state.usage.basicReports += 1;
+    target.usage.basicReports += 1;
   } else if (event.product === "complete_report") {
-    state.usage.completeReports += 1;
+    target.usage.completeReports += 1;
   }
   if (event.channel === "api") {
-    state.usage.apiCalls += 1;
+    target.usage.apiCalls += 1;
   }
-  state.usage.estimatedSubtotal = roundMoney(state.usage.estimatedSubtotal + event.estimatedValue);
+  target.usage.estimatedSubtotal = roundMoney(target.usage.estimatedSubtotal + event.estimatedValue);
   if (event.tariffBucket === "data_partner_credit") {
-    state.usage.dataPartnerCreditQueries += 1;
-    state.usage.dataPartnerCreditSubtotal = roundMoney(state.usage.dataPartnerCreditSubtotal + event.estimatedValue);
+    target.usage.dataPartnerCreditQueries += 1;
+    target.usage.dataPartnerCreditSubtotal = roundMoney(target.usage.dataPartnerCreditSubtotal + event.estimatedValue);
   } else if (event.tariffBucket === "excess_cliente_normal") {
-    state.usage.excessNormalQueries += 1;
-    state.usage.excessNormalSubtotal = roundMoney(state.usage.excessNormalSubtotal + event.estimatedValue);
+    target.usage.excessNormalQueries += 1;
+    target.usage.excessNormalSubtotal = roundMoney(target.usage.excessNormalSubtotal + event.estimatedValue);
   } else {
-    state.usage.clienteNormalQueries += 1;
-    state.usage.clienteNormalSubtotal = roundMoney(state.usage.clienteNormalSubtotal + event.estimatedValue);
+    target.usage.clienteNormalQueries += 1;
+    target.usage.clienteNormalSubtotal = roundMoney(target.usage.clienteNormalSubtotal + event.estimatedValue);
   }
 }
 
@@ -1163,23 +1200,27 @@ function buildInhabilitationsStatus({ identifierType, identifier }) {
 }
 
 function buildInvoicePreview() {
+  return buildInvoicePreviewFor(state.usage, state.client.creditsBalance);
+}
+
+function buildInvoicePreviewFor(usage, creditsBalance) {
   return {
     period: "2026-05",
     currency: "USD",
     billingMode: "monthly_postpaid",
-    subtotal: roundMoney(state.usage.estimatedSubtotal),
-    tax: roundMoney(state.usage.estimatedSubtotal * 0.15),
-    total: roundMoney(state.usage.estimatedSubtotal * 1.15),
-    creditsGenerated: state.usage.creditsGenerated,
-    creditsUsed: state.usage.creditsUsed,
-    creditsBalance: state.client.creditsBalance,
+    subtotal: roundMoney(usage.estimatedSubtotal),
+    tax: roundMoney(usage.estimatedSubtotal * 0.15),
+    total: roundMoney(usage.estimatedSubtotal * 1.15),
+    creditsGenerated: usage.creditsGenerated,
+    creditsUsed: usage.creditsUsed,
+    creditsBalance,
     breakdown: {
-      dataPartnerCreditQueries: state.usage.dataPartnerCreditQueries,
-      dataPartnerCreditSubtotal: roundMoney(state.usage.dataPartnerCreditSubtotal),
-      excessNormalQueries: state.usage.excessNormalQueries,
-      excessNormalSubtotal: roundMoney(state.usage.excessNormalSubtotal),
-      clienteNormalQueries: state.usage.clienteNormalQueries,
-      clienteNormalSubtotal: roundMoney(state.usage.clienteNormalSubtotal)
+      dataPartnerCreditQueries: usage.dataPartnerCreditQueries,
+      dataPartnerCreditSubtotal: roundMoney(usage.dataPartnerCreditSubtotal),
+      excessNormalQueries: usage.excessNormalQueries,
+      excessNormalSubtotal: roundMoney(usage.excessNormalSubtotal),
+      clienteNormalQueries: usage.clienteNormalQueries,
+      clienteNormalSubtotal: roundMoney(usage.clienteNormalSubtotal)
     },
     note: "Simulacion tecnica. Liquidacion final y excepciones comerciales requieren aprobacion de Mateo."
   };
