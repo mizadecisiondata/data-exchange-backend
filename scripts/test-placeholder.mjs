@@ -12,6 +12,7 @@ import {
   registerClientResponse
 } from "../src/routes/auth.mjs";
 import {
+  approveClientDocument,
   approveDemoAccessRequest,
   createAdminClient,
   createAdminUser,
@@ -25,6 +26,7 @@ import {
   runIndividualQuery,
   updateAdminSettings,
   updateAdminUser,
+  uploadClientDocument,
   updateDemoSubUser
 } from "../src/routes/demo.mjs";
 import { buildHealthResponse } from "../src/routes/health.mjs";
@@ -198,6 +200,12 @@ const demoBasicFree = runIndividualQuery({ product: "basic_report" });
 const demoFoundingPanorama = runIndividualQuery({ product: "complete_report" });
 const demoMassiveBatch = runBatchQuery({ product: "complete_report", recordCount: 1000 });
 const demoInvoiceDispatch = dispatchClientInvoice("client_megadatos_demo", { channel: "provider_api" });
+const demoDocumentUpload = uploadClientDocument({
+  clientId: "client_megadatos_demo",
+  documentId: "ruc",
+  fileName: "ruc-megadatos-actualizado.pdf"
+});
+const demoDocumentApproval = approveClientDocument("client_megadatos_demo", "ruc", {});
 
 if (demoBasicFree.audit.tariff !== "data_partner_basic_report_free_with_credit" || demoBasicFree.audit.estimatedValue !== 0 || demoBasicFree.audit.creditApplied !== true) {
   throw new Error("Data Partner Founding basic report must be free while Decision Credits are available.");
@@ -217,6 +225,10 @@ if (!demoMassiveBatch.state.outbox.some((item) => item.type === "decision_credit
 
 if (demoInvoiceDispatch.dispatch.status !== "simulated_provider_api_queued" || demoInvoiceDispatch.state.auditLog[0].type !== "invoice_approved_and_dispatched") {
   throw new Error("Admin billing must support invoice approval and provider API dispatch simulation.");
+}
+
+if (demoDocumentUpload.payload.document.status !== "uploaded_for_review" || demoDocumentApproval.payload.document.status !== "approved") {
+  throw new Error("Client documents must be uploadable and approvable by admin.");
 }
 
 console.log("Backend bootstrap tests ok.");

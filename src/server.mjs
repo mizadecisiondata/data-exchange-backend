@@ -17,6 +17,7 @@ import {
   buildTemplate,
   createAdminClient,
   createAdminUser,
+  approveClientDocument,
   dispatchClientInvoice,
   createDemoSubUser,
   getDemoState,
@@ -29,6 +30,7 @@ import {
   runIndividualQuery,
   updateAdminSettings,
   updateAdminUser,
+  uploadClientDocument,
   updateDemoSubUser
 } from "./routes/demo.mjs";
 import { buildHealthResponse, writeJson } from "./routes/health.mjs";
@@ -131,6 +133,13 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  const documentApprovalMatch = url.pathname.match(/^\/api\/v1\/admin\/clients\/([^/]+)\/documents\/([^/]+)\/approve$/);
+  if (request.method === "POST" && documentApprovalMatch) {
+    const result = approveClientDocument(documentApprovalMatch[1], documentApprovalMatch[2], await readJsonBody(request));
+    writeJson(response, result.statusCode, result.payload);
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/api/v1/demo/reset") {
     writeJson(response, 200, resetDemoState());
     return;
@@ -144,6 +153,12 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/v1/ingestion/information-blocks") {
     writeJson(response, 202, ingestInformationBlocks(await readJsonBody(request)));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/client/documents") {
+    const result = uploadClientDocument(await readJsonBody(request));
+    writeJson(response, result.statusCode, result.payload);
     return;
   }
 

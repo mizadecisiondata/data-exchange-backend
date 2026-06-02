@@ -14,6 +14,16 @@ const initialDocuments = {
   "data-source": false,
   contacts: false
 };
+const documentLabels = {
+  nda: "NDA firmado",
+  "master-agreement": "Contrato marco firmado",
+  "technical-annex": "Anexo tecnico / modalidad",
+  ruc: "RUC actualizado",
+  "legal-appointment": "Nombramiento representante legal",
+  "legal-id": "Cedula representante legal",
+  "data-source": "Declaracion de fuente y legitimacion de datos",
+  contacts: "Contacto tecnico, operativo y facturacion"
+};
 
 const sampleInformationRows = [
   { identifierType: "cedula", identifier: "0923048581", holderName: "Cliente Demo 1", product: "Internet hogar", balance: 120.5, daysPastDue: 0, consent: true },
@@ -87,6 +97,7 @@ function createState() {
       creditsBalance: 0
     },
     documents: { ...initialDocuments },
+    documentFiles: buildInitialDocumentFiles(initialDocuments, "operaciones@megadatos.demo"),
     uploads: [],
     queries: [],
     batchQueries: [],
@@ -111,6 +122,16 @@ function createState() {
           "data-source": false,
           contacts: true
         },
+        documentFiles: buildInitialDocumentFiles({
+          nda: true,
+          "master-agreement": false,
+          "technical-annex": false,
+          ruc: true,
+          "legal-appointment": false,
+          "legal-id": false,
+          "data-source": false,
+          contacts: true
+        }, "operaciones@retail.demo"),
         uploads: [],
         queries: [],
         batchQueries: [],
@@ -171,6 +192,7 @@ export function getDemoState() {
     generatedAt: nowIso(),
     client: { ...state.client },
     documents: { ...state.documents },
+    documentFiles: cloneDocumentFiles(state.documentFiles),
     uploads: state.uploads.map((item) => ({ ...item })),
     queries: state.queries.map((item) => ({ ...item })),
     batchQueries: state.batchQueries.map((item) => ({ ...item })),
@@ -274,6 +296,7 @@ export function approveDemoAccessRequest(id, body) {
   }
 
   setClientDocuments(target, Object.fromEntries(Object.keys(target.documents).map((key) => [key, true])));
+  approveAllDocumentFiles(target, body.actor ?? "admin@decisiondata.ec");
   target.client.state = "approved";
   target.client.productionAccess = true;
   target.client.sandboxUploadAllowed = true;
@@ -361,7 +384,7 @@ export function ingestInformationBlocks(body = {}) {
   const denominator = rows.length - duplicates.length;
   const qualityScore = denominator === 0 ? 0 : accepted.length / denominator;
   const status = qualityScore >= 0.95 ? "accepted" : "rejected_quality_below_95";
-  const creditGeneration = status === "accepted" ? calculateUploadCredits(accepted, target.client.mode) : createEmptyCreditGeneration();
+  const creditGeneration = status === "accepted" ? calculateUploadCredits(accepted, target.client.mode, body) : createEmptyCreditGeneration();
   const creditsGenerated = creditGeneration.totalCredits;
   const upload = {
     id: `UPL-${Date.now()}`,
@@ -415,9 +438,7 @@ function buildSimulatedInformationRows(body = {}) {
     return sampleInformationRows.map((row) => ({ ...row, periodAgeMonths: 0 }));
   }
 
-  const currentSubjects = Math.max(0, Math.min(200, Math.round(Number(body.currentSubjects ?? 0) || 0)));
-  const historicalSubjects = Math.max(0, Math.min(50, Math.round(Number(body.historicalSubjects ?? 0) || 0)));
-  const historicalDepth = Math.max(0, Math.min(48, Math.round(Number(body.historicalDepth ?? 48) || 0)));
+  const { currentSubjects, historicalSubjects, historicalDepth } = normalizeSimulationControls(body);
   const rows = [];
 
   for (let index = 0; index < currentSubjects; index += 1) {
@@ -451,9 +472,25 @@ function buildSimulatedInformationRows(body = {}) {
   return rows;
 }
 
-function calculateUploadCredits(rows, mode) {
+function calculateUploadCredits(rows, mode, body = {}) {
   if (!mode.startsWith("Data Partner")) {
     return createEmptyCreditGeneration();
+  }
+
+  if (["currentSubjects", "historicalSubjects", "historicalDepth"].some((key) => Object.hasOwn(body, key))) {
+    const { currentSubjects, historicalSubjects, historicalDepth } = normalizeSimulationControls(body);
+    const currentCredits = currentSubjects * decisionCreditPolicy.currentPeriodCredits;
+    const historicalCredits = historicalDepth > 0 ? historicalSubjects * decisionCreditPolicy.historicalSeriesTotalCredits : 0;
+    const totalCredits = currentCredits + historicalCredits;
+
+    return {
+      currentRows: currentSubjects,
+      historicalRows: historicalDepth > 0 ? historicalSubjects * historicalDepth : 0,
+      currentCredits: roundCredits(currentCredits),
+      historicalCredits: roundCredits(historicalCredits),
+      totalCredits: roundCredits(totalCredits),
+      policy: "M0_1_credit_historical_subject_series_4_credits"
+    };
   }
 
   const result = rows.reduce((acc, row) => {
@@ -474,6 +511,14 @@ function calculateUploadCredits(rows, mode) {
     currentCredits: roundCredits(result.currentCredits),
     historicalCredits: roundCredits(result.historicalCredits),
     totalCredits: roundCredits(result.totalCredits)
+  };
+}
+
+function normalizeSimulationControls(body = {}) {
+  return {
+    currentSubjects: Math.max(0, Math.min(10_000, Math.round(Number(body.currentSubjects ?? 0) || 0))),
+    historicalSubjects: Math.max(0, Math.min(10_000, Math.round(Number(body.historicalSubjects ?? 0) || 0))),
+    historicalDepth: Math.max(0, Math.min(48, Math.round(Number(body.historicalDepth ?? 48) || 0)))
   };
 }
 
@@ -782,7 +827,7 @@ export function getUsageResponse() {
 export function dispatchClientInvoice(clientId, body = {}) {
   const target = findClientById(clientId) ?? getPrimaryClientTarget();
   const channel = body.channel === "provider_api" ? "provider_api" : "email";
-  const invoice = buildInvoicePreviewFor(target.usage, target.client.creditsBalance);
+  const invoice = buildInvoicePreviewFor(target.usage, target.client.creditsBalance, normalizeInvoicePeriod(body.cutoffPeriod ?? body.cutoffDate));
   const dispatch = {
     id: `INV-DISPATCH-${Date.now()}`,
     type: channel === "provider_api" ? "invoice_provider_api_dispatch" : "invoice_email_dispatch",
@@ -813,6 +858,115 @@ export function dispatchClientInvoice(clientId, body = {}) {
   };
 }
 
+export function uploadClientDocument(body = {}) {
+  const target = findClientById(body.clientId) ?? getPrimaryClientTarget();
+  const documentId = String(body.documentId ?? "");
+
+  if (!Object.hasOwn(target.documents, documentId)) {
+    return {
+      statusCode: 404,
+      payload: {
+        status: "document_not_found",
+        documentId
+      }
+    };
+  }
+
+  const uploadedBy = body.uploadedBy ?? getClientEmail(target);
+  const fileName = sanitizeFileName(body.fileName ?? `${documentId}-signed.pdf`);
+  const file = {
+    documentId,
+    label: documentLabels[documentId] ?? documentId,
+    fileName,
+    status: "uploaded_for_review",
+    uploadedAt: nowIso(),
+    uploadedBy
+  };
+  setClientDocumentFile(target, documentId, file);
+  target.client.state = target.client.productionAccess ? target.client.state : "documents_under_review";
+  pushAdminAudit({
+    type: "client_document_upload",
+    actor: uploadedBy,
+    clientId: target.client.id,
+    clientName: target.client.legalName,
+    detail: `${file.label} cargado para revision: ${file.fileName}.`,
+    channel: "portal",
+    status: "uploaded_for_review"
+  });
+
+  return {
+    statusCode: 202,
+    payload: {
+      status: "document_uploaded_for_review",
+      document: file,
+      state: getDemoState()
+    }
+  };
+}
+
+export function approveClientDocument(clientId, documentId, body = {}) {
+  const target = findClientById(clientId);
+
+  if (!target || !Object.hasOwn(target.documents, documentId)) {
+    return {
+      statusCode: 404,
+      payload: {
+        status: "document_not_found",
+        documentId
+      }
+    };
+  }
+
+  const current = target.documentFiles[documentId] ?? {
+    documentId,
+    label: documentLabels[documentId] ?? documentId,
+    fileName: `${documentId}-signed.pdf`,
+    status: "uploaded_for_review",
+    uploadedAt: nowIso(),
+    uploadedBy: getClientEmail(target)
+  };
+  const approved = {
+    ...current,
+    status: "approved",
+    approvedAt: nowIso(),
+    approvedBy: body.actor ?? "admin@decisiondata.ec"
+  };
+
+  target.documents[documentId] = true;
+  setClientDocuments(target, target.documents);
+  setClientDocumentFile(target, documentId, approved);
+  if (!Object.values(target.documents).some((value) => value !== true) && !target.client.productionAccess) {
+    target.client.state = "ready_for_admin_approval";
+  }
+  pushClientOutbox(target, {
+    id: `email_document_approved_${documentId}_${Date.now()}`,
+    type: "document_approved",
+    to: getClientEmail(target),
+    subject: `${approved.label} aprobado - Decision Data`,
+    status: "simulated_not_sent",
+    body: "El documento fue aprobado por administracion. Si todos los habilitantes estan aprobados, el acceso puede pasar a aprobacion final.",
+    createdAt: nowIso()
+  });
+  pushAdminAudit({
+    type: "admin_document_approval",
+    actor: approved.approvedBy,
+    clientId: target.client.id,
+    clientName: target.client.legalName,
+    detail: `${approved.label} aprobado: ${approved.fileName}.`,
+    channel: "admin",
+    status: "approved"
+  });
+
+  return {
+    statusCode: 202,
+    payload: {
+      status: "document_approved",
+      document: approved,
+      state: getDemoState()
+    }
+  };
+}
+
 export function createAdminClient(body = {}) {
   const index = state.phantomClients.length + 2;
   const legalName = body.legalName ?? `CLIENTE FANTASMA ${index} S.A.`;
@@ -838,6 +992,16 @@ export function createAdminClient(body = {}) {
       "data-source": false,
       contacts: true
     },
+    documentFiles: buildInitialDocumentFiles({
+      nda: false,
+      "master-agreement": false,
+      "technical-annex": false,
+      ruc: true,
+      "legal-appointment": false,
+      "legal-id": false,
+      "data-source": false,
+      contacts: true
+    }, body.email ?? `operaciones@${slugify(legalName)}.demo`),
     uploads: [],
     queries: [],
     batchQueries: [],
@@ -1092,6 +1256,7 @@ function buildAdminClients() {
     client: state.client,
     requestId: "REQ-2026-MEGADATOS-DEMO",
     documents: state.documents,
+    documentFiles: state.documentFiles,
     uploads: state.uploads,
     queries: state.queries,
     batchQueries: state.batchQueries,
@@ -1106,6 +1271,7 @@ function buildAdminClients() {
       client,
       requestId: client.requestId,
       documents: client.documents,
+      documentFiles: client.documentFiles,
       uploads: client.uploads,
       queries: client.queries,
       batchQueries: client.batchQueries,
@@ -1116,7 +1282,7 @@ function buildAdminClients() {
   ];
 }
 
-function buildClientRecord({ client, requestId, documents, uploads, queries, batchQueries, usage, outbox, createdAt }) {
+function buildClientRecord({ client, requestId, documents, documentFiles, uploads, queries, batchQueries, usage, outbox, createdAt }) {
   const missing = Object.entries(documents)
     .filter(([, value]) => value !== true)
     .map(([key]) => key);
@@ -1135,6 +1301,7 @@ function buildClientRecord({ client, requestId, documents, uploads, queries, bat
     creditsBalance: client.creditsBalance,
     blockingDocumentsMissing: missing,
     documents: { ...documents },
+    documentFiles: cloneDocumentFiles(documentFiles ?? {}),
     uploads: uploads.map((item) => ({ ...item })),
     queries: queries.map((item) => ({ ...item })),
     batchQueries: batchQueries.map((item) => ({ ...item })),
@@ -1193,6 +1360,7 @@ function buildGlobalUsage() {
       { label: "Panorama", count: totals.completeReports },
       { label: "API", count: totals.apiCalls }
     ],
+    channelMix: buildChannelMix(clients),
     byClient: clients.map((client) => ({
       clientId: client.id,
       legalName: client.legalName,
@@ -1202,6 +1370,30 @@ function buildGlobalUsage() {
       state: client.state
     }))
   };
+}
+
+function buildChannelMix(clients) {
+  const channelTotals = new Map([
+    ["portal", { label: "Portal", count: 0, subtotal: 0 }],
+    ["batch", { label: "Bloque", count: 0, subtotal: 0 }],
+    ["api", { label: "API", count: 0, subtotal: 0 }]
+  ]);
+
+  clients.forEach((client) => {
+    client.queries.forEach((query) => {
+      const key = query.channel === "api" ? "api" : query.channel === "batch" ? "batch" : "portal";
+      const item = channelTotals.get(key);
+      item.count += 1;
+      item.subtotal = roundMoney(item.subtotal + query.estimatedValue);
+    });
+    client.batchQueries.forEach((batch) => {
+      const item = channelTotals.get("batch");
+      item.count += batch.rowsProcessed;
+      item.subtotal = roundMoney(item.subtotal + batch.estimatedSubtotal);
+    });
+  });
+
+  return [...channelTotals.values()];
 }
 
 function buildIngestionDashboard() {
@@ -1221,6 +1413,13 @@ function buildIngestionDashboard() {
     duplicateRows,
     errorRows,
     qualityThreshold: state.settings.qualityThreshold,
+    series: [
+      { label: "Ene", queries: 1200, amount: 120 },
+      { label: "Feb", queries: 2400, amount: 180 },
+      { label: "Mar", queries: 3200, amount: 260 },
+      { label: "Abr", queries: 4100, amount: 340 },
+      { label: "May", queries: Math.max(acceptedRows, 1), amount: Math.max(uploads.reduce((sum, upload) => sum + upload.creditsGenerated, 0), 1) }
+    ],
     byClient: clients.map((client) => ({
       clientId: client.id,
       legalName: client.legalName,
@@ -1241,6 +1440,7 @@ function buildAuditLog() {
     channel: query.channel,
     product: query.product,
     tariff: query.tariff,
+    tariffLabel: query.tariffLabel,
     estimatedValue: query.estimatedValue,
     status: query.status,
     detail: `${query.identifierType}:${query.identifier}`,
@@ -1274,6 +1474,7 @@ function findClientByRequestId(requestId) {
   return {
     client,
     documents: client.documents,
+    documentFiles: client.documentFiles,
     uploads: client.uploads,
     queries: client.queries,
     batchQueries: client.batchQueries,
@@ -1294,6 +1495,7 @@ function findClientById(clientId) {
   return {
     client,
     documents: client.documents,
+    documentFiles: client.documentFiles,
     uploads: client.uploads,
     queries: client.queries,
     batchQueries: client.batchQueries,
@@ -1307,6 +1509,7 @@ function getPrimaryClientTarget() {
   return {
     client: state.client,
     documents: state.documents,
+    documentFiles: state.documentFiles,
     uploads: state.uploads,
     queries: state.queries,
     batchQueries: state.batchQueries,
@@ -1324,6 +1527,69 @@ function setClientDocuments(target, documents) {
   }
   target.client.documents = documents;
   target.documents = target.client.documents;
+}
+
+function setClientDocumentFile(target, documentId, file) {
+  if (target.client.id === state.client.id) {
+    state.documentFiles = {
+      ...state.documentFiles,
+      [documentId]: file
+    };
+    target.documentFiles = state.documentFiles;
+    return;
+  }
+  target.client.documentFiles = {
+    ...(target.client.documentFiles ?? {}),
+    [documentId]: file
+  };
+  target.documentFiles = target.client.documentFiles;
+}
+
+function approveAllDocumentFiles(target, approvedBy) {
+  Object.keys(target.documents).forEach((documentId) => {
+    const current = target.documentFiles?.[documentId] ?? {
+      documentId,
+      label: documentLabels[documentId] ?? documentId,
+      fileName: `${documentId}-signed.pdf`,
+      status: "uploaded_for_review",
+      uploadedAt: nowIso(),
+      uploadedBy: getClientEmail(target)
+    };
+    setClientDocumentFile(target, documentId, {
+      ...current,
+      status: "approved",
+      approvedAt: nowIso(),
+      approvedBy
+    });
+  });
+}
+
+function buildInitialDocumentFiles(documents, uploadedBy) {
+  return Object.fromEntries(Object.entries(documents)
+    .filter(([, approved]) => approved === true)
+    .map(([documentId]) => [documentId, {
+      documentId,
+      label: documentLabels[documentId] ?? documentId,
+      fileName: `${documentId}-signed.pdf`,
+      status: "approved",
+      uploadedAt: "2026-05-23T08:00:00.000Z",
+      uploadedBy,
+      approvedAt: "2026-05-23T08:05:00.000Z",
+      approvedBy: "admin@decisiondata.ec"
+    }]));
+}
+
+function cloneDocumentFiles(files) {
+  return Object.fromEntries(Object.entries(files ?? {}).map(([key, value]) => [key, { ...value }]));
+}
+
+function sanitizeFileName(value) {
+  return String(value).replace(/[\\/:*?"<>|]+/g, "-").slice(0, 160) || "documento.pdf";
+}
+
+function normalizeInvoicePeriod(value) {
+  const normalized = String(value ?? "").slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(normalized) ? normalized : "2026-05";
 }
 
 function pushClientOutbox(target, email) {
@@ -1613,12 +1879,12 @@ function buildInvoicePreview() {
   return buildInvoicePreviewFor(state.usage, state.client.creditsBalance);
 }
 
-function buildInvoicePreviewFor(usage, creditsBalance) {
+function buildInvoicePreviewFor(usage, creditsBalance, period = "2026-05") {
   const projectedMonthlyDepreciation = calculateMonthlyBalanceDepreciation(creditsBalance);
   const projectedBalanceAfterDepreciation = roundCredits(Math.max(0, creditsBalance - projectedMonthlyDepreciation));
 
   return {
-    period: "2026-05",
+    period,
     currency: "USD",
     billingMode: "monthly_postpaid",
     subtotal: roundMoney(usage.estimatedSubtotal),
