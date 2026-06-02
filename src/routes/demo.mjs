@@ -60,6 +60,20 @@ const defaultSettings = {
   sbInhabilitationIncludedInPanorama: true
 };
 
+const decisionCreditPolicy = {
+  maxHistoricalMonths: 48,
+  currentPeriodCredits: 1,
+  historicalSeriesTotalCredits: 4,
+  monthlyBalanceDepreciationCredits: 1 / 12
+};
+
+const historicalCreditWeights = Array.from({ length: decisionCreditPolicy.maxHistoricalMonths }, (_, index) => {
+  const monthAge = index + 1;
+  return Math.log((decisionCreditPolicy.maxHistoricalMonths + 2) / (monthAge + 1));
+});
+const historicalCreditScale = decisionCreditPolicy.historicalSeriesTotalCredits
+  / historicalCreditWeights.reduce((sum, value) => sum + value, 0);
+
 function createState() {
   return {
     client: {
@@ -321,14 +335,15 @@ export function buildTemplate(name) {
 
 export function ingestInformationBlocks(body = {}) {
   const target = findClientById(body.clientId) ?? getPrimaryClientTarget();
-  const rows = Array.isArray(body.rows) && body.rows.length > 0 ? body.rows : sampleInformationRows;
+  const rows = Array.isArray(body.rows) && body.rows.length > 0 ? body.rows : buildSimulatedInformationRows(body);
   const seen = new Set();
   const duplicates = [];
   const accepted = [];
   const errors = [];
 
   rows.forEach((row, index) => {
-    const key = `${row.identifierType}:${row.identifier}`;
+    const periodAgeMonths = normalizePeriodAgeMonths(row.periodAgeMonths ?? row.monthAge ?? row.period);
+    const key = `${row.identifierType}:${row.identifier}:M-${periodAgeMonths}`;
     if (seen.has(key)) {
       duplicates.push({ index, identifier: row.identifier });
       return;
@@ -340,13 +355,14 @@ export function ingestInformationBlocks(body = {}) {
       return;
     }
 
-    accepted.push(row);
+    accepted.push({ ...row, periodAgeMonths });
   });
 
   const denominator = rows.length - duplicates.length;
   const qualityScore = denominator === 0 ? 0 : accepted.length / denominator;
   const status = qualityScore >= 0.95 ? "accepted" : "rejected_quality_below_95";
-  const creditsGenerated = status === "accepted" ? accepted.length : 0;
+  const creditGeneration = status === "accepted" ? calculateUploadCredits(accepted, target.client.mode) : createEmptyCreditGeneration();
+  const creditsGenerated = creditGeneration.totalCredits;
   const upload = {
     id: `UPL-${Date.now()}`,
     status,
@@ -361,18 +377,23 @@ export function ingestInformationBlocks(body = {}) {
     threshold: 0.95,
     duplicatesPolicy: "discarded_without_error_or_credits",
     creditsGenerated,
+    currentCreditsGenerated: creditGeneration.currentCredits,
+    historicalCreditsGenerated: creditGeneration.historicalCredits,
+    creditGeneration,
     createdAt: nowIso()
   };
 
   target.uploads.unshift(upload);
-  target.client.creditsBalance += creditsGenerated;
-  target.usage.creditsGenerated += creditsGenerated;
+  target.client.creditsBalance = roundCredits(target.client.creditsBalance + creditsGenerated);
+  target.usage.creditsGenerated = roundCredits(target.usage.creditsGenerated + creditsGenerated);
+  target.usage.currentCreditsGenerated = roundCredits(target.usage.currentCreditsGenerated + creditGeneration.currentCredits);
+  target.usage.historicalCreditsGenerated = roundCredits(target.usage.historicalCreditsGenerated + creditGeneration.historicalCredits);
   pushAdminAudit({
     type: "client_information_block_upload",
     actor: body.user ?? "operaciones@megadatos.demo",
     clientId: target.client.id,
     clientName: target.client.legalName,
-    detail: `${accepted.length} registros aceptados, ${duplicates.length} duplicados, calidad ${Math.round(qualityScore * 100)}%.`,
+    detail: `${accepted.length} registros aceptados, ${duplicates.length} duplicados, calidad ${Math.round(qualityScore * 100)}%, ${creditsGenerated.toFixed(2)} Decision Credits generados.`,
     channel: target.client.productionAccess ? "portal" : "non_productive_portal",
     status
   });
@@ -384,6 +405,106 @@ export function ingestInformationBlocks(body = {}) {
     errors,
     state: getDemoState()
   };
+}
+
+function buildSimulatedInformationRows(body = {}) {
+  const hasSimulationControls = ["currentSubjects", "historicalSubjects", "historicalDepth"]
+    .some((key) => Object.hasOwn(body, key));
+
+  if (!hasSimulationControls) {
+    return sampleInformationRows.map((row) => ({ ...row, periodAgeMonths: 0 }));
+  }
+
+  const currentSubjects = Math.max(0, Math.min(200, Math.round(Number(body.currentSubjects ?? 0) || 0)));
+  const historicalSubjects = Math.max(0, Math.min(50, Math.round(Number(body.historicalSubjects ?? 0) || 0)));
+  const historicalDepth = Math.max(0, Math.min(48, Math.round(Number(body.historicalDepth ?? 48) || 0)));
+  const rows = [];
+
+  for (let index = 0; index < currentSubjects; index += 1) {
+    rows.push({
+      identifierType: "cedula",
+      identifier: `09${String(23048581 + index).padStart(8, "0")}`,
+      holderName: `Cliente vigente ${index + 1}`,
+      product: "Informacion comercial vigente",
+      balance: 100 + index,
+      daysPastDue: index % 3,
+      consent: true,
+      periodAgeMonths: 0
+    });
+  }
+
+  for (let subject = 0; subject < historicalSubjects; subject += 1) {
+    for (let month = 1; month <= historicalDepth; month += 1) {
+      rows.push({
+        identifierType: "cedula",
+        identifier: `17${String(10000000 + subject).padStart(8, "0")}`,
+        holderName: `Cliente historico ${subject + 1}`,
+        product: "Informacion comercial historica",
+        balance: Math.max(0, 180 - month),
+        daysPastDue: month % 6,
+        consent: true,
+        periodAgeMonths: month
+      });
+    }
+  }
+
+  return rows;
+}
+
+function calculateUploadCredits(rows, mode) {
+  if (!mode.startsWith("Data Partner")) {
+    return createEmptyCreditGeneration();
+  }
+
+  const result = rows.reduce((acc, row) => {
+    const credit = getDecisionCreditForPeriod(row.periodAgeMonths);
+    if (row.periodAgeMonths === 0) {
+      acc.currentCredits += credit;
+      acc.currentRows += 1;
+    } else {
+      acc.historicalCredits += credit;
+      acc.historicalRows += 1;
+    }
+    acc.totalCredits += credit;
+    return acc;
+  }, createEmptyCreditGeneration());
+
+  return {
+    ...result,
+    currentCredits: roundCredits(result.currentCredits),
+    historicalCredits: roundCredits(result.historicalCredits),
+    totalCredits: roundCredits(result.totalCredits)
+  };
+}
+
+function createEmptyCreditGeneration() {
+  return {
+    currentRows: 0,
+    historicalRows: 0,
+    currentCredits: 0,
+    historicalCredits: 0,
+    totalCredits: 0,
+    policy: "M0_1_credit_historical_M1_M48_logarithmic_total_4"
+  };
+}
+
+function getDecisionCreditForPeriod(periodAgeMonths) {
+  const monthAge = normalizePeriodAgeMonths(periodAgeMonths);
+  if (monthAge === 0) {
+    return decisionCreditPolicy.currentPeriodCredits;
+  }
+  return historicalCreditWeights[monthAge - 1] * historicalCreditScale;
+}
+
+function normalizePeriodAgeMonths(value) {
+  if (typeof value === "string") {
+    const normalized = value.trim().toUpperCase().replace("M", "").replace("-", "");
+    const numeric = Number(normalized);
+    return Math.max(0, Math.min(48, Math.round(Number.isFinite(numeric) ? numeric : 0)));
+  }
+
+  const numeric = Number(value);
+  return Math.max(0, Math.min(48, Math.round(Number.isFinite(numeric) ? numeric : 0)));
 }
 
 export function runIndividualQuery(body = {}) {
@@ -745,7 +866,10 @@ function createUsageSummary() {
     apiCalls: 0,
     estimatedSubtotal: 0,
     creditsGenerated: 0,
+    currentCreditsGenerated: 0,
+    historicalCreditsGenerated: 0,
     creditsUsed: 0,
+    creditsDepreciated: 0,
     dataPartnerCreditQueries: 0,
     dataPartnerCreditSubtotal: 0,
     excessNormalQueries: 0,
@@ -824,8 +948,11 @@ function buildGlobalUsage() {
     completeReports: acc.completeReports + client.usage.completeReports,
     apiCalls: acc.apiCalls + client.usage.apiCalls,
     estimatedSubtotal: roundMoney(acc.estimatedSubtotal + client.usage.estimatedSubtotal),
-    creditsGenerated: acc.creditsGenerated + client.usage.creditsGenerated,
+    creditsGenerated: roundCredits(acc.creditsGenerated + client.usage.creditsGenerated),
+    currentCreditsGenerated: roundCredits(acc.currentCreditsGenerated + client.usage.currentCreditsGenerated),
+    historicalCreditsGenerated: roundCredits(acc.historicalCreditsGenerated + client.usage.historicalCreditsGenerated),
     creditsUsed: roundCredits(acc.creditsUsed + client.usage.creditsUsed),
+    creditsDepreciated: roundCredits(acc.creditsDepreciated + client.usage.creditsDepreciated),
     productiveClients: acc.productiveClients + (client.productionAccess ? 1 : 0),
     pendingClients: acc.pendingClients + (client.productionAccess ? 0 : 1)
   }), {
@@ -834,7 +961,10 @@ function buildGlobalUsage() {
     apiCalls: 0,
     estimatedSubtotal: 0,
     creditsGenerated: 0,
+    currentCreditsGenerated: 0,
+    historicalCreditsGenerated: 0,
     creditsUsed: 0,
+    creditsDepreciated: 0,
     productiveClients: 0,
     pendingClients: 0
   });
@@ -1204,6 +1334,9 @@ function buildInvoicePreview() {
 }
 
 function buildInvoicePreviewFor(usage, creditsBalance) {
+  const projectedMonthlyDepreciation = calculateMonthlyBalanceDepreciation(creditsBalance);
+  const projectedBalanceAfterDepreciation = roundCredits(Math.max(0, creditsBalance - projectedMonthlyDepreciation));
+
   return {
     period: "2026-05",
     currency: "USD",
@@ -1212,8 +1345,17 @@ function buildInvoicePreviewFor(usage, creditsBalance) {
     tax: roundMoney(usage.estimatedSubtotal * 0.15),
     total: roundMoney(usage.estimatedSubtotal * 1.15),
     creditsGenerated: usage.creditsGenerated,
+    currentCreditsGenerated: usage.currentCreditsGenerated,
+    historicalCreditsGenerated: usage.historicalCreditsGenerated,
     creditsUsed: usage.creditsUsed,
+    creditsDepreciated: usage.creditsDepreciated,
     creditsBalance,
+    balanceDepreciationPolicy: {
+      monthlyFixedCredits: roundCredits(decisionCreditPolicy.monthlyBalanceDepreciationCredits),
+      projectedMonthlyDepreciation,
+      projectedBalanceAfterDepreciation,
+      description: "Depreciacion fija mensual del saldo no usado para incentivar carga y consumo recurrente."
+    },
     breakdown: {
       dataPartnerCreditQueries: usage.dataPartnerCreditQueries,
       dataPartnerCreditSubtotal: roundMoney(usage.dataPartnerCreditSubtotal),
@@ -1224,6 +1366,10 @@ function buildInvoicePreviewFor(usage, creditsBalance) {
     },
     note: "Simulacion tecnica. Liquidacion final y excepciones comerciales requieren aprobacion de Mateo."
   };
+}
+
+function calculateMonthlyBalanceDepreciation(creditsBalance) {
+  return roundCredits(Math.min(Math.max(0, creditsBalance), decisionCreditPolicy.monthlyBalanceDepreciationCredits));
 }
 
 function roundMoney(value) {

@@ -104,20 +104,27 @@
     }
   ],
   "decisionCredits": {
+    "version": "v2_logarithmic_5_credit_series",
+    "detailContract": "decision-credits-v2.contract.json",
+    "commercialUpdateNeeded": "Actualizar la propuesta comercial para indicar que M0 genera 1 credito, la historia M-1 a M-48 suma 4 creditos con ponderacion logaritmica y la serie completa del sujeto suma 5 creditos.",
     "Data Partner Contributor": {
-      "ratio": "1:2",
+      "ratio": "M0_1_credit_historical_logarithmic_series_total_5",
       "appliesTo": "basic_report",
-      "excessTariff": "cliente_normal"
+      "excessTariff": "cliente_normal",
+      "specializedReports": "cliente_normal_until_upgrade_to_active_or_founding",
+      "commercialWording": "Dato vigente M0 genera 1 Decision Credit. Serie historica completa ponderada por actualidad, hasta 48 meses, suma 4 Decision Credits adicionales. Contributor puede usar credits solo en reporte basico; Panorama/Completo se cobra como Cliente Normal salvo upgrade."
     },
     "Data Partner Active": {
-      "ratio": "1:1",
-      "appliesTo": "preferential_benefits",
-      "excessTariff": "cliente_normal"
+      "ratio": "1_credit_to_1_benefit_with_5_credit_subject_series",
+      "appliesTo": "basic_report_free_and_complete_report_preferential_tariff",
+      "excessTariff": "cliente_normal",
+      "commercialWording": "Cada credito habilita un reporte basico gratuito o una consulta Panorama Pro con tarifa Active. M0 + historia completa suman 5 credits por sujeto. Exceso a Cliente Normal."
     },
     "Data Partner Founding": {
-      "ratio": "1:1",
-      "appliesTo": "preferential_benefits",
-      "excessTariff": "cliente_normal"
+      "ratio": "1_credit_to_1_benefit_with_5_credit_subject_series",
+      "appliesTo": "basic_report_free_and_complete_report_preferential_tariff",
+      "excessTariff": "cliente_normal",
+      "commercialWording": "Cada credito habilita un reporte basico gratuito o una consulta Panorama Pro con tarifa Founding. M0 + historia completa suman 5 credits por sujeto. Exceso a Cliente Normal."
     }
   },
   "goLiveProcess": [

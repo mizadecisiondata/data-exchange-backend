@@ -1,0 +1,132 @@
+{
+  "version": "dd-decision-credits-v2-logarithmic-20260602",
+  "status": "sandbox_approved_pending_final_legal_accounting_review",
+  "source": {
+    "type": "mateo_definition",
+    "date": "2026-06-02",
+    "summary": "Dato vigente M0 genera 1 Decision Credit; la serie historica M-1 a M-48 suma 4 Decision Credits con ponderacion logaritmica. La serie completa por sujeto suma 5 Decision Credits."
+  },
+  "creditNature": {
+    "isPrepaid": false,
+    "monetaryRedemption": false,
+    "billingModel": "monthly_postpaid",
+    "description": "Decision Credits reconocen reciprocidad de datos y habilitan beneficios de consumo; no son prepago ni dinero acumulado."
+  },
+  "generationPolicy": {
+    "scope": "risk_subject_period",
+    "identifiers": ["cedula", "ruc", "codigo_sb"],
+    "currentPeriod": {
+      "period": "M0",
+      "credits": 1
+    },
+    "historicalWindow": {
+      "periods": "M-1_to_M-48",
+      "maxPreviousMonths": 48,
+      "totalCreditsForFullHistory": 4,
+      "formula": "credit(monthAge) = 4 * ln(50 / (monthAge + 1)) / sum(ln(50 / (i + 1)), i=1..48)"
+    },
+    "fullSubjectSeriesCredits": 5,
+    "duplicatesPolicy": "discard_same_subject_same_period_without_error_or_credits",
+    "qualityThreshold": 0.95
+  },
+  "balanceDepreciationPolicy": {
+    "scope": "unused_client_credit_balance",
+    "monthlyCutFormula": "saldo_corte = max(0, saldo_anterior + carga_historica + carga_actual - dep_mensual)",
+    "monthlyFixedCredits": 0.083333,
+    "commercialReason": "Incentivar carga actual mensual y consumo recurrente sin castigar agresivamente saldos pequenos.",
+    "productionNote": "Antes de salida productiva, validar tratamiento contable y eventual tope de saldo acumulable por modalidad."
+  },
+  "modalities": {
+    "Cliente Normal": {
+      "generatesCredits": false,
+      "basicReport": {
+        "canUseCredits": false,
+        "priceRule": "cliente_normal"
+      },
+      "completeReport": {
+        "canUseCredits": false,
+        "priceRule": "cliente_normal"
+      }
+    },
+    "Data Partner Contributor": {
+      "generatesCredits": true,
+      "basicReport": {
+        "canUseCredits": true,
+        "creditCost": 1,
+        "priceWithCredit": 0,
+        "priceWithoutCredit": "cliente_normal"
+      },
+      "completeReport": {
+        "canUseCredits": false,
+        "priceRule": "cliente_normal",
+        "upgradePath": ["Data Partner Active", "Data Partner Founding"]
+      },
+      "excessRule": "cliente_normal"
+    },
+    "Data Partner Active": {
+      "generatesCredits": true,
+      "basicReport": {
+        "canUseCredits": true,
+        "creditCost": 1,
+        "priceWithCredit": 0,
+        "priceWithoutCredit": "cliente_normal"
+      },
+      "completeReport": {
+        "canUseCredits": true,
+        "creditCost": 1,
+        "priceWithCredit": "data_partner_active_preferential_tariff",
+        "priceWithoutCredit": "cliente_normal"
+      },
+      "excessRule": "cliente_normal"
+    },
+    "Data Partner Founding": {
+      "generatesCredits": true,
+      "basicReport": {
+        "canUseCredits": true,
+        "creditCost": 1,
+        "priceWithCredit": 0,
+        "priceWithoutCredit": "cliente_normal"
+      },
+      "completeReport": {
+        "canUseCredits": true,
+        "creditCost": 1,
+        "priceWithCredit": "data_partner_founding_preferential_tariff",
+        "priceWithoutCredit": "cliente_normal"
+      },
+      "excessRule": "cliente_normal"
+    }
+  },
+  "processingRules": [
+    "Calcular creditos por sujeto de riesgo y periodo reportado.",
+    "M0 genera 1 credito; la historia completa M-1 a M-48 suma 4 creditos.",
+    "Descartar duplicados por sujeto-periodo antes del calculo; no cuentan como error ni generan Decision Credits.",
+    "Bloques con calidad inferior a 95% no generan Decision Credits.",
+    "Redondear creditos a dos decimales para visualizacion, conservando precision interna para calculo.",
+    "Aplicar tarifa Cliente Normal a cualquier consumo fuera del saldo o fuera del beneficio de modalidad.",
+    "Decision Credits no son prepago ni saldo monetario.",
+    "Cualquier excepcion comercial, regulatoria, contable o de pricing requiere aprobacion de Mateo antes de implementarse en produccion."
+  ],
+  "examples": [
+    {
+      "uploadedPeriods": ["M0"],
+      "credits": 1,
+      "meaning": "Dato vigente del sujeto."
+    },
+    {
+      "uploadedPeriods": "M-1_to_M-48",
+      "credits": 4,
+      "meaning": "Serie historica completa sin dato vigente."
+    },
+    {
+      "uploadedPeriods": "M0_to_M-48",
+      "credits": 5,
+      "meaning": "Serie completa del sujeto."
+    },
+    {
+      "balanceBeforeCut": 5,
+      "monthlyFixedDepreciation": 0.083333,
+      "balanceAfterCut": 4.916667,
+      "meaning": "Saldo no usado se deprecia suavemente al corte mensual."
+    }
+  ]
+}

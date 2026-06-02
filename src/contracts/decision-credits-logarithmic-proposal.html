@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Decision Credits - propuesta logaritmica</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #05091f;
+      --panel: #0c1430;
+      --line: rgba(255,255,255,.12);
+      --text: #f7f9ff;
+      --muted: #9fb0cc;
+      --orange: #ff6b1a;
+      --yellow: #ffc400;
+      --blue: #3aa7ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 0%, rgba(255,196,0,.12), transparent 30%), var(--bg);
+      color: var(--text);
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      line-height: 1.45;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+    header {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    h1, h2 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 34px; }
+    h2 { font-size: 20px; }
+    p { margin: 0; color: var(--muted); }
+    code {
+      color: #fff2b0;
+      background: rgba(255,255,255,.07);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 2px 6px;
+    }
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+    .summary {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .card {
+      border: 1px solid var(--line);
+      background: rgba(12,20,48,.86);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 18px 48px rgba(0,0,0,.25);
+    }
+    .metric strong {
+      display: block;
+      font-size: 28px;
+      color: var(--yellow);
+    }
+    .metric span { color: var(--muted); font-size: 13px; }
+    .layout {
+      grid-template-columns: 1.2fr .8fr;
+      align-items: start;
+    }
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0,0,0,.22);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 8px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 10px;
+      text-align: right;
+      font-size: 13px;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 700;
+      background: rgba(255,255,255,.04);
+    }
+    th:first-child, td:first-child { text-align: left; }
+    tbody tr:hover { background: rgba(255,255,255,.04); }
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--orange), var(--yellow));
+    }
+    .note {
+      border-left: 3px solid var(--yellow);
+      padding-left: 12px;
+      color: var(--muted);
+    }
+    .controls {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-top: 12px;
+    }
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    input[type="number"], input[type="range"], input[type="text"] {
+      width: 100%;
+    }
+    input[type="number"], input[type="text"] {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0,0,0,.28);
+      color: var(--text);
+      padding: 10px 11px;
+      font: inherit;
+    }
+    input[type="range"] {
+      accent-color: var(--yellow);
+    }
+    .formula {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0,0,0,.22);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .sim-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      margin-top: 12px;
+    }
+    @media (max-width: 900px) {
+      .summary, .layout, .controls, .sim-grid { grid-template-columns: 1fr; }
+      h1 { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Decision Credits - depreciacion logaritmica propuesta</h1>
+      <p>Objetivo: M0 vale 1 credito y la serie historica M-1 a M-48 suma 4 creditos, para que toda la serie del sujeto sume 5 creditos.</p>
+      <p>Formula historica: <code>credito(m) = 4 * ln(50 / (m + 1)) / sum(ln(50 / (i + 1)), i=1..48)</code>. M0 se fija manualmente en <code>1.00</code>.</p>
+    </header>
+
+    <section class="grid summary">
+      <article class="card metric"><strong id="m0">1.00</strong><span>Credito dato actual M0</span></article>
+      <article class="card metric"><strong id="historicTotal">4.00</strong><span>Total historico M-1 a M-48</span></article>
+      <article class="card metric"><strong id="total">5.00</strong><span>Total serie completa</span></article>
+      <article class="card metric"><strong id="lastValue">0.00</strong><span>Valor aproximado M-48</span></article>
+    </section>
+
+    <section class="grid layout" style="margin-top:16px">
+      <article class="card">
+        <h2>Grafico de conversion</h2>
+        <p style="margin:6px 0 14px">La curva premia de forma fuerte los meses recientes y reduce el valor de los datos antiguos sin dejarlos completamente en cero.</p>
+        <svg id="chart" viewBox="0 0 900 420" role="img" aria-label="Curva logaritmica de Decision Credits"></svg>
+      </article>
+      <article class="card">
+        <h2>Lectura comercial</h2>
+        <p class="note" style="margin-top:10px">
+          Con esta curva, el dato vigente tiene peso comercial alto. La serie completa ya no entrega 25 creditos, sino 5. El Contributor puede usar esos creditos solo para reportes basicos; Active y Founding los usan para reporte basico gratis o tarifa preferencial en Panorama Pro.
+        </p>
+      </article>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2>Simulador de depreciacion de saldo</h2>
+      <p style="margin-top:6px">Esta seccion aplica solo para depreciacion del saldo en cuenta del cliente. La depreciacion del valor del dato historico se mantiene intacta en la curva superior.</p>
+      <div class="formula">
+        <span><b>Orden mensual:</b> saldo anterior + carga historica opcional + carga actual mensual - depreciacion fija del saldo.</span>
+        <span><b>Formula:</b> <code>saldo_corte = max(0, saldo_anterior + historico + carga_actual - dep_mensual)</code></span>
+        <span><b>Nota:</b> M0 funciona como corte de arranque y no aplica depreciacion. Desde M1 se descuenta la depreciacion fija configurable, por defecto <code>1 / 12 = 0.083333</code> creditos.</span>
+      </div>
+      <div class="grid controls">
+        <label>Saldo antes de M0
+          <input id="initialBalance" type="number" value="0" min="0" step="0.01" />
+        </label>
+        <label>Carga actual mensual
+          <input id="currentSubjects" type="number" value="1" min="0" step="1" />
+        </label>
+        <label>Meses a simular
+          <input id="simulationMonths" type="number" value="12" min="1" max="60" step="1" />
+        </label>
+        <label>Depreciacion fija mensual
+          <input id="monthlyDecay" type="number" value="0.083333" min="0" step="0.000001" />
+        </label>
+      </div>
+      <div class="grid controls">
+        <label>Meses con carga historica
+          <input id="historicalMonths" type="text" value="0,6" />
+        </label>
+        <label>Sujetos historicos por evento
+          <input id="historicalSubjects" type="number" value="1" min="0" step="1" />
+        </label>
+        <label>Profundidad historica M-1..M-n
+          <input id="historicalDepth" type="number" value="48" min="0" max="48" step="1" />
+        </label>
+        <label>Factor M-48 informativo
+          <input id="m48Factor" type="number" value="0" readonly />
+        </label>
+      </div>
+      <div class="grid sim-grid">
+        <article class="metric"><strong id="generatedPerMonth">1.00</strong><span>Carga actual / mes</span></article>
+        <article class="metric"><strong id="historicalCreditUnit">4.00</strong><span>Credito historico por sujeto</span></article>
+        <article class="metric"><strong id="monthOneDepreciation">0.0833</strong><span>Depreciacion M1</span></article>
+        <article class="metric"><strong id="endingBalance">20.00</strong><span>Saldo final simulado</span></article>
+        <article class="metric"><strong id="totalDepreciated">1.0000</strong><span>Total depreciado</span></article>
+      </div>
+      <div class="grid layout" style="margin-top:16px">
+        <div>
+          <svg id="balanceChart" viewBox="0 0 900 420" role="img" aria-label="Curva de saldo Decision Credits"></svg>
+        </div>
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Mes</th>
+                <th>Saldo anterior</th>
+                <th>Historico</th>
+                <th>Carga actual</th>
+                <th>Dep.</th>
+                <th>Saldo al corte</th>
+                <th>Neto despues dep.</th>
+              </tr>
+            </thead>
+            <tbody id="balanceRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2>Tabla completa</h2>
+      <div style="overflow:auto; margin-top:12px">
+        <table>
+          <thead>
+            <tr>
+              <th>Periodo</th>
+              <th>Meses de antiguedad</th>
+              <th>Credito</th>
+              <th>Acumulado</th>
+              <th style="width:180px">Peso visual</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const maxMonths = 48;
+    const raw = [];
+    for (let month = 1; month <= maxMonths; month += 1) {
+      raw.push(Math.log((maxMonths + 2) / (month + 1)));
+    }
+    const rawTotal = raw.reduce((sum, value) => sum + value, 0);
+    const scale = 4 / rawTotal;
+    const data = [{ period: "M0", month: 0, credit: 1 }];
+    for (let month = 1; month <= maxMonths; month += 1) {
+      data.push({ period: `M-${month}`, month, credit: raw[month - 1] * scale });
+    }
+    let accumulated = 0;
+    data.forEach((item) => {
+      accumulated += item.credit;
+      item.accumulated = accumulated;
+    });
+
+    document.getElementById("historicTotal").textContent = data.slice(1).reduce((sum, item) => sum + item.credit, 0).toFixed(2);
+    document.getElementById("total").textContent = data.reduce((sum, item) => sum + item.credit, 0).toFixed(2);
+    document.getElementById("lastValue").textContent = data.at(-1).credit.toFixed(4);
+
+    const rows = document.getElementById("rows");
+    const maxCredit = Math.max(...data.map((item) => item.credit));
+    rows.innerHTML = data.map((item) => `
+      <tr>
+        <td>${item.period}</td>
+        <td>${item.month}</td>
+        <td>${item.credit.toFixed(4)}</td>
+        <td>${item.accumulated.toFixed(4)}</td>
+        <td><div class="bar" style="width:${Math.max(2, (item.credit / maxCredit) * 100)}%"></div></td>
+      </tr>
+    `).join("");
+
+    const svg = document.getElementById("chart");
+    const width = 900;
+    const height = 420;
+    const pad = { left: 58, right: 24, top: 30, bottom: 52 };
+    const plotW = width - pad.left - pad.right;
+    const plotH = height - pad.top - pad.bottom;
+    const x = (month) => pad.left + (month / maxMonths) * plotW;
+    const y = (credit) => pad.top + plotH - (credit / maxCredit) * plotH;
+    const path = data.map((item, index) => `${index === 0 ? "M" : "L"} ${x(item.month).toFixed(2)} ${y(item.credit).toFixed(2)}`).join(" ");
+    const area = `${path} L ${x(maxMonths)} ${pad.top + plotH} L ${x(0)} ${pad.top + plotH} Z`;
+    const ticks = [0, 6, 12, 18, 24, 30, 36, 42, 48];
+    const yTicks = [0, .25, .5, .75, 1];
+    svg.innerHTML = `
+      <defs>
+        <linearGradient id="line" x1="0" x2="1">
+          <stop offset="0" stop-color="#ff6b1a" />
+          <stop offset="1" stop-color="#ffc400" />
+        </linearGradient>
+        <linearGradient id="area" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stop-color="#ffc400" stop-opacity=".24" />
+          <stop offset="1" stop-color="#ffc400" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      ${yTicks.map((tick) => `<line x1="${pad.left}" y1="${y(tick)}" x2="${width - pad.right}" y2="${y(tick)}" stroke="rgba(255,255,255,.10)" /><text x="16" y="${y(tick) + 4}" fill="#9fb0cc" font-size="13">${tick.toFixed(2)}</text>`).join("")}
+      ${ticks.map((tick) => `<line x1="${x(tick)}" y1="${pad.top}" x2="${x(tick)}" y2="${pad.top + plotH}" stroke="rgba(255,255,255,.06)" /><text x="${x(tick) - 12}" y="${height - 18}" fill="#9fb0cc" font-size="13">M-${tick}</text>`).join("")}
+      <path d="${area}" fill="url(#area)" />
+      <path d="${path}" fill="none" stroke="url(#line)" stroke-width="4" stroke-linecap="round" />
+      ${data.filter((_, index) => index % 4 === 0 || index === 1 || index === data.length - 1).map((item) => `<circle cx="${x(item.month)}" cy="${y(item.credit)}" r="4" fill="#ffc400" />`).join("")}
+      <text x="${pad.left}" y="20" fill="#f7f9ff" font-size="14">Credito por periodo</text>
+      <text x="${width - 180}" y="${height - 18}" fill="#9fb0cc" font-size="13">Meses de antiguedad</text>
+    `;
+
+    const initialBalanceInput = document.getElementById("initialBalance");
+    const simulationMonthsInput = document.getElementById("simulationMonths");
+    const monthlyDecayInput = document.getElementById("monthlyDecay");
+    const currentSubjectsInput = document.getElementById("currentSubjects");
+    const historicalMonthsInput = document.getElementById("historicalMonths");
+    const historicalSubjectsInput = document.getElementById("historicalSubjects");
+    const historicalDepthInput = document.getElementById("historicalDepth");
+    const balanceRows = document.getElementById("balanceRows");
+    const balanceChart = document.getElementById("balanceChart");
+    const m48RatePercent = data.at(-1).credit * 100;
+    document.getElementById("m48Factor").value = data.at(-1).credit.toFixed(6);
+
+    [
+      initialBalanceInput,
+      simulationMonthsInput,
+      monthlyDecayInput,
+      currentSubjectsInput,
+      historicalMonthsInput,
+      historicalSubjectsInput,
+      historicalDepthInput
+    ].forEach((input) => input.addEventListener("input", simulateBalance));
+
+    function getNumber(input, fallback = 0) {
+      const value = Number(input.value);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function getHistoricalCredits(depth) {
+      const safeDepth = Math.max(0, Math.min(48, Math.round(depth)));
+      return data.slice(1, safeDepth + 1).reduce((sum, item) => sum + item.credit, 0);
+    }
+
+    function parseHistoricalMonths(value) {
+      return new Set(String(value)
+        .split(",")
+        .map((item) => Number(item.trim()))
+        .filter((item) => Number.isInteger(item) && item >= 0 && item <= 60));
+    }
+
+    function simulateBalance() {
+      const initialBalance = Math.max(0, getNumber(initialBalanceInput, 5));
+      const months = Math.max(1, Math.min(60, Math.round(getNumber(simulationMonthsInput, 12))));
+      const monthlyDecayCredit = Math.max(0, getNumber(monthlyDecayInput, 1 / 12));
+      const currentSubjects = Math.max(0, Math.round(getNumber(currentSubjectsInput, 0)));
+      const historicalSubjects = Math.max(0, Math.round(getNumber(historicalSubjectsInput, 0)));
+      const historicalMonths = parseHistoricalMonths(historicalMonthsInput.value);
+      const historicalDepth = Math.max(0, Math.min(48, Math.round(getNumber(historicalDepthInput, 48))));
+      const historicalCreditUnit = getHistoricalCredits(historicalDepth);
+      const currentCredits = currentSubjects;
+      const simulation = [];
+      let balance = initialBalance;
+      let totalDepreciated = 0;
+
+      for (let month = 0; month <= months; month += 1) {
+        const start = balance;
+        const historicalCredits = historicalMonths.has(month) ? historicalSubjects * historicalCreditUnit : 0;
+        const availableBeforeDepreciation = start + historicalCredits + currentCredits;
+        const depreciation = month === 0 ? 0 : Math.min(monthlyDecayCredit, availableBeforeDepreciation);
+        balance = Math.max(0, availableBeforeDepreciation - depreciation);
+        const netAfterDepreciation = historicalCredits + currentCredits - depreciation;
+        totalDepreciated += depreciation;
+        simulation.push({
+          month,
+          start,
+          historicalCredits,
+          currentCredits,
+          depreciation,
+          netAfterDepreciation,
+          end: balance
+        });
+      }
+
+      document.getElementById("generatedPerMonth").textContent = currentCredits.toFixed(2);
+      document.getElementById("historicalCreditUnit").textContent = historicalCreditUnit.toFixed(2);
+      document.getElementById("monthOneDepreciation").textContent = (simulation[1]?.depreciation ?? 0).toFixed(4);
+      document.getElementById("endingBalance").textContent = balance.toFixed(2);
+      document.getElementById("totalDepreciated").textContent = totalDepreciated.toFixed(4);
+
+      balanceRows.innerHTML = simulation.map((item) => `
+        <tr>
+          <td>M${item.month}</td>
+          <td>${item.start.toFixed(4)}</td>
+          <td>${item.historicalCredits.toFixed(4)}</td>
+          <td>${item.currentCredits.toFixed(4)}</td>
+          <td>${item.depreciation.toFixed(4)}</td>
+          <td>${item.end.toFixed(4)}</td>
+          <td>${item.netAfterDepreciation.toFixed(4)}</td>
+        </tr>
+      `).join("");
+
+      drawBalanceChart(simulation);
+    }
+
+    function drawBalanceChart(simulation) {
+      const chartWidth = 900;
+      const chartHeight = 420;
+      const chartPad = { left: 60, right: 26, top: 32, bottom: 54 };
+      const chartPlotW = chartWidth - chartPad.left - chartPad.right;
+      const chartPlotH = chartHeight - chartPad.top - chartPad.bottom;
+      const balances = simulation.map((item) => ({ month: item.month, end: item.end }));
+      const lastMonth = Math.max(...balances.map((item) => item.month), 1);
+      const maxBalance = Math.max(...balances.map((item) => item.end), 1);
+      const bx = (month) => chartPad.left + (month / lastMonth) * chartPlotW;
+      const by = (value) => chartPad.top + chartPlotH - (value / maxBalance) * chartPlotH;
+      const balancePath = balances.map((item, index) => `${index === 0 ? "M" : "L"} ${bx(item.month).toFixed(2)} ${by(item.end).toFixed(2)}`).join(" ");
+      const balanceArea = `${balancePath} L ${bx(lastMonth)} ${chartPad.top + chartPlotH} L ${bx(0)} ${chartPad.top + chartPlotH} Z`;
+      const monthTicks = [0, Math.ceil(lastMonth / 4), Math.ceil(lastMonth / 2), Math.ceil(lastMonth * .75), lastMonth]
+        .filter((item, index, source) => source.indexOf(item) === index);
+      const balanceTicks = [0, .25, .5, .75, 1];
+      balanceChart.innerHTML = `
+        <defs>
+          <linearGradient id="balanceLine" x1="0" x2="1">
+            <stop offset="0" stop-color="#3aa7ff" />
+            <stop offset="1" stop-color="#ffc400" />
+          </linearGradient>
+          <linearGradient id="balanceArea" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#3aa7ff" stop-opacity=".22" />
+            <stop offset="1" stop-color="#3aa7ff" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        ${balanceTicks.map((tick) => {
+          const value = maxBalance * tick;
+          return `<line x1="${chartPad.left}" y1="${by(value)}" x2="${chartWidth - chartPad.right}" y2="${by(value)}" stroke="rgba(255,255,255,.10)" /><text x="14" y="${by(value) + 4}" fill="#9fb0cc" font-size="13">${value.toFixed(1)}</text>`;
+        }).join("")}
+        ${monthTicks.map((tick) => `<line x1="${bx(tick)}" y1="${chartPad.top}" x2="${bx(tick)}" y2="${chartPad.top + chartPlotH}" stroke="rgba(255,255,255,.06)" /><text x="${bx(tick) - 16}" y="${chartHeight - 18}" fill="#9fb0cc" font-size="13">Mes ${tick}</text>`).join("")}
+        <path d="${balanceArea}" fill="url(#balanceArea)" />
+        <path d="${balancePath}" fill="none" stroke="url(#balanceLine)" stroke-width="4" stroke-linecap="round" />
+        ${balances.map((item) => `<circle cx="${bx(item.month)}" cy="${by(item.end)}" r="4" fill="#ffc400" />`).join("")}
+        <text x="${chartPad.left}" y="21" fill="#f7f9ff" font-size="14">Saldo de Decision Credits</text>
+        <text x="${chartWidth - 190}" y="${chartHeight - 18}" fill="#9fb0cc" font-size="13">Meses operativos</text>
+      `;
+    }
+
+    simulateBalance();
+  </script>
+</body>
+</html>
