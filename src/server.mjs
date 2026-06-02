@@ -17,6 +17,7 @@ import {
   buildTemplate,
   createAdminClient,
   createAdminUser,
+  dispatchClientInvoice,
   createDemoSubUser,
   getDemoState,
   getUsageResponse,
@@ -121,6 +122,12 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "POST" && url.pathname === "/api/v1/admin/settings") {
     const result = updateAdminSettings(await readJsonBody(request));
     writeJson(response, result.statusCode, result.payload);
+    return;
+  }
+
+  const billingDispatchMatch = url.pathname.match(/^\/api\/v1\/admin\/billing\/([^/]+)\/dispatch$/);
+  if (request.method === "POST" && billingDispatchMatch) {
+    writeJson(response, 202, dispatchClientInvoice(billingDispatchMatch[1], await readJsonBody(request)));
     return;
   }
 

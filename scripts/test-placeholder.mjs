@@ -16,6 +16,7 @@ import {
   createAdminClient,
   createAdminUser,
   createDemoSubUser,
+  dispatchClientInvoice,
   getDemoState,
   getUsageResponse,
   ingestInformationBlocks,
@@ -188,6 +189,34 @@ if (demoSettingsUpdate.payload.settings.devMonitorExternal !== true) {
 
 if (!demoSubUser.subUser.allowedModules.includes("consulta-individual") || demoSubUserUpdate.payload.subUser.status !== "blocked") {
   throw new Error("Client superadmin must be able to create and restrict subusers.");
+}
+
+resetDemoState();
+approveDemoAccessRequest("REQ-2026-MEGADATOS-DEMO", {});
+ingestInformationBlocks({ currentSubjects: 5, historicalSubjects: 0 });
+const demoBasicFree = runIndividualQuery({ product: "basic_report" });
+const demoFoundingPanorama = runIndividualQuery({ product: "complete_report" });
+const demoMassiveBatch = runBatchQuery({ product: "complete_report", recordCount: 1000 });
+const demoInvoiceDispatch = dispatchClientInvoice("client_megadatos_demo", { channel: "provider_api" });
+
+if (demoBasicFree.audit.tariff !== "data_partner_basic_report_free_with_credit" || demoBasicFree.audit.estimatedValue !== 0 || demoBasicFree.audit.creditApplied !== true) {
+  throw new Error("Data Partner Founding basic report must be free while Decision Credits are available.");
+}
+
+if (demoFoundingPanorama.audit.tariff !== "data_partner_founding_credit_tariff_1_to_1" || demoFoundingPanorama.audit.estimatedValue !== 0.5) {
+  throw new Error("Data Partner Founding panorama must keep preferential tariff while credits are available.");
+}
+
+if (demoMassiveBatch.batch.isAggregated !== true || demoMassiveBatch.batch.rowsProcessed !== 1000 || demoMassiveBatch.batch.creditAppliedRows !== 3 || demoMassiveBatch.batch.excessRows !== 997) {
+  throw new Error("Massive batch simulation must aggregate records and split Decision Credits from excess Cliente Normal tariff.");
+}
+
+if (!demoMassiveBatch.state.outbox.some((item) => item.type === "decision_credits_depleted")) {
+  throw new Error("Clients must be notified when Decision Credits are depleted.");
+}
+
+if (demoInvoiceDispatch.dispatch.status !== "simulated_provider_api_queued" || demoInvoiceDispatch.state.auditLog[0].type !== "invoice_approved_and_dispatched") {
+  throw new Error("Admin billing must support invoice approval and provider API dispatch simulation.");
 }
 
 console.log("Backend bootstrap tests ok.");
