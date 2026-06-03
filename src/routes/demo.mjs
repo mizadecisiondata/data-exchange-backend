@@ -108,28 +108,28 @@ function createState() {
         legalName: "RETAIL DEMO S.A.",
         sector: "Retail",
         mode: "Data Partner Active",
-        state: "pending_documents",
-        productionAccess: false,
+        state: "approved",
+        productionAccess: true,
         sandboxUploadAllowed: true,
         creditsBalance: 0,
         documents: {
           nda: true,
-          "master-agreement": false,
-          "technical-annex": false,
+          "master-agreement": true,
+          "technical-annex": true,
           ruc: true,
-          "legal-appointment": false,
-          "legal-id": false,
-          "data-source": false,
+          "legal-appointment": true,
+          "legal-id": true,
+          "data-source": true,
           contacts: true
         },
         documentFiles: buildInitialDocumentFiles({
           nda: true,
-          "master-agreement": false,
-          "technical-annex": false,
+          "master-agreement": true,
+          "technical-annex": true,
           ruc: true,
-          "legal-appointment": false,
-          "legal-id": false,
-          "data-source": false,
+          "legal-appointment": true,
+          "legal-id": true,
+          "data-source": true,
           contacts: true
         }, "operaciones@retail.demo"),
         uploads: [],
@@ -137,16 +137,7 @@ function createState() {
         batchQueries: [],
         subUsers: [],
         usage: createUsageSummary(),
-        outbox: [
-          {
-            id: "email_retail_pending",
-            type: "registration_received",
-            to: "operaciones@retail.demo",
-            subject: "Solicitud recibida - Decision Data",
-            status: "simulated_not_sent",
-            createdAt: "2026-05-24T09:00:00.000Z"
-          }
-        ],
+        outbox: [],
         createdAt: "2026-05-24T09:00:00.000Z"
       }
     ],

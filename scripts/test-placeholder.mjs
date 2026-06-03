@@ -48,6 +48,7 @@ const validRegistration = registerClientResponse({
 const blockedApproval = approveAccessRequestResponse("REQ-2026-MEGADATOS-DEMO", { forcePricingChange: true });
 resetDemoState();
 const demoInitial = getDemoState();
+const retailInitial = demoInitial.adminClients.find((client) => client.id === "client_retail_demo");
 const demoApproved = approveDemoAccessRequest("REQ-2026-MEGADATOS-DEMO", {});
 const demoUpload = ingestInformationBlocks();
 const demoQuery = runIndividualQuery({ product: "complete_report" });
@@ -133,6 +134,10 @@ if (blockedApproval.statusCode !== 409) {
 
 if (demoInitial.client.productionAccess !== false || demoApproved.payload.productionAccess !== true) {
   throw new Error("Demo client must move from pending to approved through admin approval.");
+}
+
+if (!retailInitial || retailInitial.mode !== "Data Partner Active" || retailInitial.productionAccess !== true || retailInitial.usage.completeReports !== 0 || retailInitial.usage.basicReports !== 0 || retailInitial.usage.apiCalls !== 0 || retailInitial.creditsBalance !== 0 || retailInitial.invoicePreview.total !== 0) {
+  throw new Error("Retail Demo must start approved as Data Partner Active with zero usage, zero credits and zero invoice.");
 }
 
 if (demoUpload.upload.duplicateRows !== 1 || demoUpload.upload.errorRows !== 0 || demoUpload.upload.qualityScore < 0.95) {
