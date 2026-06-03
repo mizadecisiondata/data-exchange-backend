@@ -231,4 +231,18 @@ if (demoDocumentUpload.payload.document.status !== "uploaded_for_review" || demo
   throw new Error("Client documents must be uploadable and approvable by admin.");
 }
 
+resetDemoState();
+approveDemoAccessRequest("REQ-2026-MEGADATOS-DEMO", {});
+ingestInformationBlocks({ currentSubjects: 2000, historicalSubjects: 2000, historicalDepth: 28 });
+runIndividualQuery({ product: "complete_report" });
+const demoAllUnitsTierBatch = runBatchQuery({ product: "complete_report", recordCount: 1000 });
+
+if (demoAllUnitsTierBatch.batch.creditAppliedRows !== 1000 || demoAllUnitsTierBatch.batch.excessRows !== 0) {
+  throw new Error("All-units tier batch must consume available Data Partner credits before excess tariff.");
+}
+
+if (demoAllUnitsTierBatch.batch.tariffBreakdown.length !== 1 || demoAllUnitsTierBatch.batch.tariffBreakdown[0].tariffTier !== "1001-5000" || demoAllUnitsTierBatch.batch.tariffBreakdown[0].unitPrice !== 0.22 || demoAllUnitsTierBatch.batch.estimatedSubtotal !== 220) {
+  throw new Error("Batch pricing must apply one all-units tier based on final monthly volume, not marginal ranges.");
+}
+
 console.log("Backend bootstrap tests ok.");

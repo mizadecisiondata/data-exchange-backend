@@ -695,91 +695,61 @@ function runAggregatedBatchQuery({ body, target, recordCount }) {
 function calculateAggregatedQueryBilling({ product, target, recordCount }) {
   const mode = target.client.mode;
   const creditPolicy = getDecisionCreditPolicy(mode, product);
-  let balance = target.client.creditsBalance;
-  let processed = 0;
+  const balance = target.client.creditsBalance;
+  const currentMonthlyVolume = target.usage.basicReports + target.usage.completeReports;
+  const finalMonthlyVolume = currentMonthlyVolume + recordCount;
+  const tier = findPricingTier(finalMonthlyVolume);
+  const breakdown = [];
+  const creditRows = creditPolicy.creditCost > 0
+    ? Math.min(recordCount, Math.floor(balance / creditPolicy.creditCost))
+    : 0;
+  const rowsWithoutCredit = recordCount - creditRows;
   let subtotal = 0;
-  let creditRows = 0;
   let excessRows = 0;
   let normalRows = 0;
-  const breakdown = [];
 
-  while (processed < recordCount) {
-    const nextMonthlyVolume = target.usage.basicReports + target.usage.completeReports + processed + 1;
-    const tier = findPricingTier(nextMonthlyVolume);
-    const tierSlots = getTierRemainingSlots(tier, nextMonthlyVolume);
-    const rowsInTier = Math.min(recordCount - processed, tierSlots);
-    const possibleCreditRows = creditPolicy.creditCost > 0
-      ? Math.min(rowsInTier, Math.floor(balance / creditPolicy.creditCost))
-      : 0;
+  if (creditRows > 0) {
+    const tariff = resolveTariff({ mode, product, tier, usesCredit: true });
+    const lineSubtotal = roundMoney(tariff.estimatedValue * creditRows);
+    breakdown.push({
+      bucket: tariff.bucket,
+      tariff: tariff.rule,
+      tariffLabel: tariff.label,
+      tariffTier: tariff.tier,
+      unitPrice: tariff.unitPrice,
+      rows: creditRows,
+      subtotal: lineSubtotal
+    });
+    subtotal = roundMoney(subtotal + lineSubtotal);
+  }
 
-    if (possibleCreditRows > 0) {
-      const tariff = resolveTariff({ mode, product, tier, usesCredit: true });
-      const lineSubtotal = roundMoney(tariff.estimatedValue * possibleCreditRows);
-      breakdown.push({
-        bucket: tariff.bucket,
-        tariff: tariff.rule,
-        tariffLabel: tariff.label,
-        tariffTier: tariff.tier,
-        unitPrice: tariff.unitPrice,
-        rows: possibleCreditRows,
-        subtotal: lineSubtotal
-      });
-      balance = roundCredits(balance - possibleCreditRows * creditPolicy.creditCost);
-      subtotal = roundMoney(subtotal + lineSubtotal);
-      creditRows += possibleCreditRows;
+  if (rowsWithoutCredit > 0) {
+    const tariff = resolveTariff({ mode, product, tier, usesCredit: false });
+    const lineSubtotal = roundMoney(tariff.estimatedValue * rowsWithoutCredit);
+    breakdown.push({
+      bucket: tariff.bucket,
+      tariff: tariff.rule,
+      tariffLabel: tariff.label,
+      tariffTier: tariff.tier,
+      unitPrice: tariff.unitPrice,
+      rows: rowsWithoutCredit,
+      subtotal: lineSubtotal
+    });
+    subtotal = roundMoney(subtotal + lineSubtotal);
+    if (tariff.bucket === "excess_cliente_normal") {
+      excessRows = rowsWithoutCredit;
+    } else {
+      normalRows = rowsWithoutCredit;
     }
-
-    const rowsWithoutCredit = rowsInTier - possibleCreditRows;
-    if (rowsWithoutCredit > 0) {
-      const tariff = resolveTariff({ mode, product, tier, usesCredit: false });
-      const lineSubtotal = roundMoney(tariff.estimatedValue * rowsWithoutCredit);
-      breakdown.push({
-        bucket: tariff.bucket,
-        tariff: tariff.rule,
-        tariffLabel: tariff.label,
-        tariffTier: tariff.tier,
-        unitPrice: tariff.unitPrice,
-        rows: rowsWithoutCredit,
-        subtotal: lineSubtotal
-      });
-      subtotal = roundMoney(subtotal + lineSubtotal);
-      if (tariff.bucket === "excess_cliente_normal") {
-        excessRows += rowsWithoutCredit;
-      } else {
-        normalRows += rowsWithoutCredit;
-      }
-    }
-
-    processed += rowsInTier;
   }
 
   return {
     subtotal: roundMoney(subtotal),
-    breakdown: mergeTariffBreakdown(breakdown),
+    breakdown,
     creditRows,
     excessRows,
     normalRows
   };
-}
-
-function getTierRemainingSlots(tier, nextMonthlyVolume) {
-  if (tier.monthlyVolume.endsWith("+")) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-  const [, maxRaw] = tier.monthlyVolume.split("-");
-  return Math.max(1, Number(maxRaw) - nextMonthlyVolume + 1);
-}
-
-function mergeTariffBreakdown(items) {
-  const grouped = new Map();
-  items.forEach((item) => {
-    const key = `${item.bucket}:${item.tariff}:${item.tariffTier}:${item.unitPrice}`;
-    const current = grouped.get(key) ?? { ...item, rows: 0, subtotal: 0 };
-    current.rows += item.rows;
-    current.subtotal = roundMoney(current.subtotal + item.subtotal);
-    grouped.set(key, current);
-  });
-  return [...grouped.values()];
 }
 
 function applyAggregatedUsage({ product, channel, target, recordCount, subtotal, breakdown, creditRows, excessRows, normalRows }) {
