@@ -245,4 +245,15 @@ if (demoAllUnitsTierBatch.batch.tariffBreakdown.length !== 1 || demoAllUnitsTier
   throw new Error("Batch pricing must apply one all-units tier based on final monthly volume, not marginal ranges.");
 }
 
+if (demoAllUnitsTierBatch.state.invoicePreview.ratingTier !== "1001-5000" || demoAllUnitsTierBatch.state.invoicePreview.subtotal !== 220.22) {
+  throw new Error("Invoice preview must consolidate the monthly cut using the current global tier.");
+}
+
+const demoApiMassive = runBatchQuery({ product: "complete_report", recordCount: 1000, channel: "api" });
+const apiLine = demoApiMassive.state.invoicePreview.consolidatedLines.find((line) => line.channel === "api" && line.product === "complete_report");
+
+if (!apiLine || apiLine.queries !== 1000 || demoApiMassive.state.usage.apiCalls !== 1000) {
+  throw new Error("API consumption must support massive record simulation and consolidated billing by channel.");
+}
+
 console.log("Backend bootstrap tests ok.");

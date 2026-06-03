@@ -615,6 +615,8 @@ export function runBatchQuery(body = {}) {
   const batch = {
     id: `BATCH-${Date.now()}`,
     status: "processed",
+    product: selectedProduct ?? "mixed",
+    channel: "batch",
     rowsReceived: rows.length,
     rowsProcessed: events.length,
     completeReportRows: events.filter((event) => event.product === "complete_report").length,
@@ -646,7 +648,7 @@ export function runBatchQuery(body = {}) {
 
 function runAggregatedBatchQuery({ body, target, recordCount }) {
   const product = normalizeProduct(body.product);
-  const channel = "batch";
+  const channel = body.channel === "api" ? "api" : "batch";
   const { subtotal, breakdown, creditRows, excessRows, normalRows } = calculateAggregatedQueryBilling({
     product,
     target,
@@ -658,6 +660,8 @@ function runAggregatedBatchQuery({ body, target, recordCount }) {
     id: `BATCH-${Date.now()}`,
     status: "processed_aggregated",
     isAggregated: true,
+    product,
+    channel,
     rowsReceived: recordCount,
     rowsProcessed: recordCount,
     completeReportRows: product === "complete_report" ? recordCount : 0,
@@ -797,7 +801,7 @@ export function getUsageResponse() {
 export function dispatchClientInvoice(clientId, body = {}) {
   const target = findClientById(clientId) ?? getPrimaryClientTarget();
   const channel = body.channel === "provider_api" ? "provider_api" : "email";
-  const invoice = buildInvoicePreviewFor(target.usage, target.client.creditsBalance, normalizeInvoicePeriod(body.cutoffPeriod ?? body.cutoffDate));
+  const invoice = buildInvoicePreviewForTarget(target, normalizeInvoicePeriod(body.cutoffPeriod ?? body.cutoffDate));
   const dispatch = {
     id: `INV-DISPATCH-${Date.now()}`,
     type: channel === "provider_api" ? "invoice_provider_api_dispatch" : "invoice_email_dispatch",
@@ -1278,7 +1282,7 @@ function buildClientRecord({ client, requestId, documents, documentFiles, upload
     usage: { ...usage },
     subUsers: (client.subUsers ?? state.subUsers ?? []).map((item) => ({ ...item, allowedModules: [...(item.allowedModules ?? [])] })),
     outbox: outbox.map((item) => ({ ...item })),
-    invoicePreview: buildInvoicePreviewFor(usage, client.creditsBalance),
+    invoicePreview: buildInvoicePreviewForTarget({ client, usage, queries, batchQueries }),
     createdAt,
     latestUploadAt: latestUpload?.createdAt ?? null,
     latestQueryAt: latestQuery?.createdAt ?? null,
@@ -1846,10 +1850,13 @@ function buildInhabilitationsStatus({ identifierType, identifier }) {
 }
 
 function buildInvoicePreview() {
-  return buildInvoicePreviewFor(state.usage, state.client.creditsBalance);
+  return buildInvoicePreviewForTarget(getPrimaryClientTarget());
 }
 
-function buildInvoicePreviewFor(usage, creditsBalance, period = "2026-05") {
+function buildInvoicePreviewForTarget(target, period = "2026-05") {
+  const usage = target.usage;
+  const creditsBalance = target.client.creditsBalance;
+  const consolidated = buildConsolidatedBilling(target);
   const projectedMonthlyDepreciation = calculateMonthlyBalanceDepreciation(creditsBalance);
   const projectedBalanceAfterDepreciation = roundCredits(Math.max(0, creditsBalance - projectedMonthlyDepreciation));
 
@@ -1857,9 +1864,10 @@ function buildInvoicePreviewFor(usage, creditsBalance, period = "2026-05") {
     period,
     currency: "USD",
     billingMode: "monthly_postpaid",
-    subtotal: roundMoney(usage.estimatedSubtotal),
-    tax: roundMoney(usage.estimatedSubtotal * 0.15),
-    total: roundMoney(usage.estimatedSubtotal * 1.15),
+    ratingTier: consolidated.ratingTier,
+    subtotal: consolidated.subtotal,
+    tax: roundMoney(consolidated.subtotal * 0.15),
+    total: roundMoney(consolidated.subtotal * 1.15),
     creditsGenerated: usage.creditsGenerated,
     currentCreditsGenerated: usage.currentCreditsGenerated,
     historicalCreditsGenerated: usage.historicalCreditsGenerated,
@@ -1873,15 +1881,109 @@ function buildInvoicePreviewFor(usage, creditsBalance, period = "2026-05") {
       description: "Depreciacion fija mensual del saldo no usado para incentivar carga y consumo recurrente."
     },
     breakdown: {
-      dataPartnerCreditQueries: usage.dataPartnerCreditQueries,
-      dataPartnerCreditSubtotal: roundMoney(usage.dataPartnerCreditSubtotal),
-      excessNormalQueries: usage.excessNormalQueries,
-      excessNormalSubtotal: roundMoney(usage.excessNormalSubtotal),
-      clienteNormalQueries: usage.clienteNormalQueries,
-      clienteNormalSubtotal: roundMoney(usage.clienteNormalSubtotal)
+      dataPartnerCreditQueries: consolidated.dataPartnerCreditQueries,
+      dataPartnerCreditSubtotal: consolidated.dataPartnerCreditSubtotal,
+      excessNormalQueries: consolidated.excessNormalQueries,
+      excessNormalSubtotal: consolidated.excessNormalSubtotal,
+      clienteNormalQueries: consolidated.clienteNormalQueries,
+      clienteNormalSubtotal: consolidated.clienteNormalSubtotal
     },
+    consolidatedLines: consolidated.lines,
     note: "Simulacion tecnica. Liquidacion final y excepciones comerciales requieren aprobacion de Mateo."
   };
+}
+
+function buildConsolidatedBilling(target) {
+  const totalQueries = target.usage.basicReports + target.usage.completeReports;
+  const ratingTier = findPricingTier(Math.max(totalQueries, 1));
+  const lineMap = new Map();
+
+  const addLine = ({ channel, product, bucket, rows }) => {
+    if (!rows || rows <= 0) return;
+    const unitPrice = getConsolidatedUnitPrice({ mode: target.client.mode, product, bucket, tier: ratingTier });
+    const tariffLabel = getConsolidatedTariffLabel({ mode: target.client.mode, product, bucket });
+    const key = `${channel}:${product}:${bucket}:${unitPrice}:${ratingTier.monthlyVolume}`;
+    const current = lineMap.get(key) ?? {
+      channel,
+      product,
+      productLabel: product === "basic_report" ? "Reporte basico" : "Panorama completo",
+      bucket,
+      tariffLabel,
+      tariffTier: ratingTier.monthlyVolume,
+      unitPrice,
+      queries: 0,
+      subtotal: 0
+    };
+    current.queries += rows;
+    current.subtotal = roundMoney(current.subtotal + unitPrice * rows);
+    lineMap.set(key, current);
+  };
+
+  target.queries.forEach((query) => {
+    addLine({
+      channel: query.channel,
+      product: query.product,
+      bucket: query.tariffBucket ?? (query.creditApplied ? "data_partner_credit" : target.client.mode.startsWith("Data Partner") ? "excess_cliente_normal" : "cliente_normal"),
+      rows: 1
+    });
+  });
+
+  target.batchQueries.forEach((batch) => {
+    (batch.tariffBreakdown ?? []).forEach((item) => {
+      addLine({
+        channel: batch.channel ?? "batch",
+        product: batch.product === "basic_report" ? "basic_report" : "complete_report",
+        bucket: item.bucket,
+        rows: item.rows
+      });
+    });
+  });
+
+  const lines = [...lineMap.values()].sort((a, b) => `${a.channel}-${a.product}-${a.bucket}`.localeCompare(`${b.channel}-${b.product}-${b.bucket}`));
+  const subtotal = roundMoney(lines.reduce((sum, line) => sum + line.subtotal, 0));
+  const sumBucket = (bucket) => ({
+    queries: lines.filter((line) => line.bucket === bucket).reduce((sum, line) => sum + line.queries, 0),
+    subtotal: roundMoney(lines.filter((line) => line.bucket === bucket).reduce((sum, line) => sum + line.subtotal, 0))
+  });
+  const dataPartnerCredit = sumBucket("data_partner_credit");
+  const excessNormal = sumBucket("excess_cliente_normal");
+  const clienteNormal = sumBucket("cliente_normal");
+
+  return {
+    ratingTier: ratingTier.monthlyVolume,
+    subtotal,
+    lines,
+    dataPartnerCreditQueries: dataPartnerCredit.queries,
+    dataPartnerCreditSubtotal: dataPartnerCredit.subtotal,
+    excessNormalQueries: excessNormal.queries,
+    excessNormalSubtotal: excessNormal.subtotal,
+    clienteNormalQueries: clienteNormal.queries,
+    clienteNormalSubtotal: clienteNormal.subtotal
+  };
+}
+
+function getConsolidatedUnitPrice({ mode, product, bucket, tier }) {
+  if (bucket === "data_partner_credit") {
+    const policy = getDecisionCreditPolicy(mode, product);
+    if (policy.preferredTariffKey === "creditFree") {
+      return 0;
+    }
+    return roundMoney(tier[policy.preferredTariffKey] ?? tier.clienteNormal);
+  }
+  return roundMoney(tier.clienteNormal);
+}
+
+function getConsolidatedTariffLabel({ mode, product, bucket }) {
+  if (bucket === "data_partner_credit" && product === "basic_report") {
+    return "Reporte basico gratis con Decision Credit";
+  }
+  if (bucket === "data_partner_credit") {
+    return `Tarifa ${mode.replace("Data Partner ", "")} preferencial con Decision Credit`;
+  }
+  if (bucket === "excess_cliente_normal") {
+    return "Exceso a tarifa Cliente Normal";
+  }
+  return "Tarifa Cliente Normal";
 }
 
 function calculateMonthlyBalanceDepreciation(creditsBalance) {
